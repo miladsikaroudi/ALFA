@@ -4,6 +4,7 @@ from algorithms.mDSDI.src.dataloaders.Standard_Dataloader import StandardDataloa
 
 train_dataloaders_map = {
     "PACS": StandardDataloader,
+    "RCC": StandardDataloader,
     "DomainNet": StandardDataloader,
     "MNIST": MNISTDataloader,
     "OfficeHome": StandardDataloader,
@@ -12,6 +13,7 @@ train_dataloaders_map = {
 
 test_dataloaders_map = {
     "PACS": StandardValDataloader,
+    "RCC": StandardValDataloader,
     "DomainNet": StandardValDataloader,
     "MNIST": MNIST_Test_Dataloader,
     "OfficeHome": StandardValDataloader,

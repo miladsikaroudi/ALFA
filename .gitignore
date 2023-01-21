@@ -5,4 +5,5 @@ data/
 *.pt
 *.0
 *.pkl
+wandb
 DomainBed/train_output/*

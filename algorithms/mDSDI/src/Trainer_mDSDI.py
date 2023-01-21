@@ -11,7 +11,7 @@ import torch.nn as nn
 from algorithms.mDSDI.src.dataloaders import dataloader_factory
 from algorithms.mDSDI.src.models import model_factory
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 
 
 class GradReverse(torch.autograd.Function):
@@ -30,9 +30,11 @@ class Domain_Discriminator(nn.Module):
         self.class_classifier = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
-            nn.Linear(feature_dim, feature_dim),
+            nn.Linear(feature_dim, 256),
+            # nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
-            nn.Linear(feature_dim, domain_classes),
+            # nn.Linear(feature_dim, domain_classes),
+            nn.Linear(256, domain_classes),
         )
 
     def forward(self, di_z):
@@ -86,7 +88,7 @@ def set_tr_val_samples_labels(meta_filenames, val_size):
 
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
-        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s+")
+        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
         data_frame = data_frame.sample(frac=1).reset_index(drop=True)
 
         split_idx = int(len(data_frame) * (1 - val_size))
@@ -103,7 +105,7 @@ def set_test_samples_labels(meta_filenames):
     sample_paths, class_labels = [], []
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
-        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s+")
+        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
         sample_paths.extend(data_frame["filename"])
         class_labels.extend(data_frame["class_label"])
 
@@ -123,6 +125,7 @@ class Trainer_mDSDI:
             + exp_idx
             + "/"
         )
+        
         self.checkpoint_name = (
             "algorithms/" + self.args.algorithm + "/results/checkpoints/" + self.args.exp_name + "_" + exp_idx
         )
@@ -209,7 +212,7 @@ class Trainer_mDSDI:
         if not os.path.exists(log_dir):
             os.mkdir(log_dir)
         shutil.rmtree(log_dir)
-        return SummaryWriter(log_dir)
+        # return SummaryWriter(log_dir)
 
     def save_plot(self):
         checkpoint = torch.load(self.checkpoint_name + ".pt")
@@ -337,7 +340,10 @@ class Trainer_mDSDI:
             total_zsc_loss += predicted_domain_ds_loss.item()
 
             predicted_classes = self.classifier(di_z, ds_z)
-            classification_loss = self.criterion(predicted_classes, tr_labels)
+            #
+            #
+            #
+            classification_loss = self.criterion(predicted_classes, tr_labels )
             total_classification_loss += classification_loss.item()
 
             total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + disentangle_loss
@@ -377,7 +383,7 @@ class Trainer_mDSDI:
 
                 di_z, ds_z = self.zi_model(mtr_samples), inner_zs_model(mtr_samples)
                 predicted_classes = inner_classifier(di_z, ds_z)
-                inner_obj = self.criterion(predicted_classes, mtr_labels)
+                inner_obj = self.criterion(predicted_classes, mtr_labels )
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == mtr_labels).sum().item()
 
@@ -393,7 +399,7 @@ class Trainer_mDSDI:
 
                 di_z, ds_z = self.zi_model(mte_samples), inner_zs_model(mte_samples)
                 predicted_classes = inner_classifier(di_z, ds_z)
-                loss_inner_j = self.criterion(predicted_classes, mte_labels)
+                loss_inner_j = self.criterion(predicted_classes, mte_labels )
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == mte_labels).sum().item()
 
@@ -410,29 +416,25 @@ class Trainer_mDSDI:
 
             total_class_samples = total_samples + total_meta_samples
             self.meta_optimizer.step()
+            print('iteration:',iteration)
+            print('--------')
+            print('Accuracy/train',100.0 * n_class_corrected / total_class_samples)
 
+            print('Accuracy/domainAT_train',100.0 * n_domain_class_corrected / total_samples)
+            print('Accuracy/domainZS_train',100.0 * n_zs_domain_class_corrected / total_samples)
+            print('Loss/train',total_classification_loss / total_class_samples)
+            print('Loss/domainAT_train',total_dc_loss / total_samples)
+            print('Loss/domainZS_train',total_zsc_loss / total_samples)
+            print('Loss/disentangle',total_disentangle_loss / total_samples)
+
+            wandb.log({'Accuracy/train': 100.0 * n_class_corrected / total_class_samples}, step=iteration)
+            wandb.log({'Accuracy/domainAT_train':100.0 * n_domain_class_corrected / total_samples}, step=iteration)
+            wandb.log({'Accuracy/domainZS_train':100.0 * n_zs_domain_class_corrected / total_samples}, step=iteration)
+            wandb.log({'Loss/train': total_classification_loss / total_class_samples}, step=iteration)
+            wandb.log({'Loss/domainAT_train': total_dc_loss / total_samples}, step=iteration)
+            wandb.log({'Loss/domainZS_train': total_zsc_loss / total_samples}, step=iteration)
+            wandb.log({'Loss/disentangle': total_disentangle_loss / total_samples}, step=iteration)
             if iteration % self.args.step_eval == 0:
-                self.writer.add_scalar("Accuracy/train", 100.0 * n_class_corrected / total_class_samples, iteration)
-                self.writer.add_scalar(
-                    "Accuracy/domainAT_train", 100.0 * n_domain_class_corrected / total_samples, iteration
-                )
-                self.writer.add_scalar(
-                    "Accuracy/domainZS_train", 100.0 * n_zs_domain_class_corrected / total_samples, iteration
-                )
-                self.writer.add_scalar("Loss/train", total_classification_loss / total_class_samples, iteration)
-                self.writer.add_scalar("Loss/domainAT_train", total_dc_loss / total_samples, iteration)
-                self.writer.add_scalar("Loss/domainZS_train", total_zsc_loss / total_samples, iteration)
-                self.writer.add_scalar("Loss/disentangle", total_disentangle_loss / total_samples, iteration)
-                logging.info(
-                    "Train set: Iteration: [{}/{}]\tAccuracy: {}/{} ({:.2f}%)\tLoss: {:.6f}".format(
-                        iteration,
-                        self.args.iterations,
-                        n_class_corrected,
-                        total_class_samples,
-                        100.0 * n_class_corrected / total_class_samples,
-                        total_classification_loss / total_class_samples,
-                    )
-                )
                 self.evaluate(iteration)
 
             n_class_corrected = 0
@@ -459,25 +461,18 @@ class Trainer_mDSDI:
                 samples, labels = samples.to(self.device), labels.to(self.device)
                 di_z, ds_z = self.zi_model(samples), self.zs_model(samples)
                 predicted_classes = self.classifier(di_z, ds_z)
-                classification_loss = self.criterion(predicted_classes, labels)
+                classification_loss = self.criterion(predicted_classes, labels )
                 total_classification_loss += classification_loss.item()
 
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
-
-        self.writer.add_scalar("Accuracy/validate", 100.0 * n_class_corrected / len(self.val_loader.dataset), n_iter)
-        self.writer.add_scalar("Loss/validate", total_classification_loss / len(self.val_loader.dataset), n_iter)
-        logging.info(
-            "Val set: Accuracy: {}/{} ({:.2f}%)\tLoss: {:.6f}".format(
-                n_class_corrected,
-                len(self.val_loader.dataset),
-                100.0 * n_class_corrected / len(self.val_loader.dataset),
-                total_classification_loss / len(self.val_loader.dataset),
-            )
-        )
-
         val_acc = n_class_corrected / len(self.val_loader.dataset)
         val_loss = total_classification_loss / len(self.val_loader.dataset)
+        print('iteration:', n_iter)
+        print('Val set accuracy', 100.0 * n_class_corrected / len(self.val_loader.dataset))
+        print('Val set loss', total_classification_loss / len(self.val_loader.dataset))
+        wandb.log({'Val set accuracy': 100.0 * n_class_corrected / len(self.val_loader.dataset)}, step=n_iter)
+        wandb.log({'Val set loss': total_classification_loss / len(self.val_loader.dataset)}, step=n_iter)
 
         self.zi_model.train()
         self.zs_model.train()
@@ -534,11 +529,7 @@ class Trainer_mDSDI:
 
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
+        print('Test set accuracy', 100.0 * n_class_corrected / len(self.test_loader.dataset))
+        wandb.log({'Test set accuracy': 100.0 * n_class_corrected / len(self.test_loader.dataset)})
 
-        logging.info(
-            "Test set: Accuracy: {}/{} ({:.2f}%)".format(
-                n_class_corrected,
-                len(self.test_loader.dataset),
-                100.0 * n_class_corrected / len(self.test_loader.dataset),
-            )
-        )
+

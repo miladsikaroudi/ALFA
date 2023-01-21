@@ -1,0 +1,20 @@
+{
+    "exp_name": "RCC_igc",
+    "algorithm": "mDSDI",
+    "model": "resnet50",
+    "feature_dim": 2048,
+    "dataset": "RCC",
+    "seed_value": 1,
+    "val_size": 0.2,
+    "src_data_path": "/isilon/datasets/DG_TCGA_patches/ready_to_run/",
+    "src_train_meta_filenames":["/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/NCI Urologic Oncology Branch_train.txt",
+        "/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/MSKCC_train.txt",
+        "/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/Harvard and MD Anderson_train.txt"],
+    "target_test_meta_filenames": ["/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/International Genomics Consortium_test.txt"],
+    "n_classes": 3,
+    "n_domain_classes": 3,
+    "iterations": 5000,
+    "learning_rate": 0.00005,
+    "batch_size": 16,
+    "step_eval": 300
+}

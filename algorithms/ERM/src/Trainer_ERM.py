@@ -10,7 +10,7 @@ import torch.nn as nn
 from algorithms.ERM.src.dataloaders import dataloader_factory
 from algorithms.ERM.src.models import model_factory
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 
 class Classifier(nn.Module):
@@ -59,7 +59,7 @@ class Trainer_ERM:
         self.writer = self.set_writer(
             log_dir="algorithms/"
             + self.args.algorithm
-            + "/results/tensorboards/"
+            # + "/results/tensorboards/"
             + self.args.exp_name
             + "_"
             + exp_idx
