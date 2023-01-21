@@ -1,1 +1,0 @@
-python -m domainbed.scripts.train --data_dir=../data/ --algorithm MDSDI --dataset PACS --test_env 0
