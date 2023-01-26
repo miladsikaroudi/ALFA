@@ -1,8 +1,33 @@
 import torch
 import torch.nn.functional as F
+from pytorch_metric_learning import miners, losses
 
 
-def kd(data1, label1, data2, label2, bool_indicator, n_class=7, temperature=2.0):
+
+import torch
+from torch import nn
+
+class TripletLoss(nn.Module):
+
+    """Triplet loss with hard positive/negative mining.
+    Reference:
+    Hermans et al. In Defense of the Triplet Loss for Person Re-Identification. arXiv:1703.07737.
+    Code imported from https://github.com/Cysu/open-reid/blob/master/reid/loss/triplet.py.
+    Args:
+        margin (float): margin for triplet.
+    """
+    def __init__(self, margin):
+        super(TripletLoss, self).__init__()
+        self.miner = miners.MultiSimilarityMiner()
+        self.loss_func = losses.TripletMarginLoss(margin)
+
+    def forward(self, inputs, targets):
+        hard_pairs = self.miner(inputs, targets)
+        loss = self.loss_func(inputs, targets, hard_pairs)
+        return loss
+
+
+def kd(data1=None, label1=None, data2=None, label2=None, bool_indicator=None, n_class=3, temperature=2.0):
     label1 = F.one_hot(label1 , n_class).double()
     label2 = F.one_hot(label2 , n_class).double()
     kd_loss = 0.0
@@ -10,13 +35,11 @@ def kd(data1, label1, data2, label2, bool_indicator, n_class=7, temperature=2.0)
 
     prob1s = []
     prob2s = []
+    bool_indicator = torch.tensor([[1.0], [1.0], [1.0]]).cuda()
+
 
     for cls in range(n_class):
-        print(cls)
         mask1 = torch.tile(torch.unsqueeze(label1[:, cls], -1), [1, n_class])
-        print(label1)
-        print(mask1)
-        print(data1)
         logits_sum1 = torch.mean(torch.multiply(data1, mask1), axis=0)
         num1 = torch.mean(label1[:, cls])
         activations1 = logits_sum1 * 1.0 / (num1 + eps)# add eps for prevent un-sampled class resulting in NAN
@@ -32,7 +55,6 @@ def kd(data1, label1, data2, label2, bool_indicator, n_class=7, temperature=2.0)
 
         KL_div = (torch.mean(prob1 * torch.log(prob1 / prob2)) + torch.mean(prob2 * torch.log(prob2 / prob1))) / 2.0
         kd_loss += KL_div * bool_indicator[cls]
-        print('kl_loss',kd_loss)
         prob1s.append(prob1)
         prob2s.append(prob2)
 

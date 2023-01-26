@@ -346,7 +346,7 @@ class Trainer_mDSDI:
             classification_loss = self.criterion(predicted_classes, tr_labels )
             total_classification_loss += classification_loss.item()
 
-            total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + disentangle_loss
+            total_loss = classification_loss + 0.8*predicted_domain_di_loss + 0.2*predicted_domain_ds_loss + disentangle_loss
 
             _, ds_predicted_classes = torch.max(ds_predicted_classes, 1)
             n_zs_domain_class_corrected += (ds_predicted_classes == tr_domain_labels).sum().item()

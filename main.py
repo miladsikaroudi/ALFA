@@ -8,9 +8,11 @@ import numpy as np
 import torch
 from algorithms.ERM.src.Trainer_ERM import Trainer_ERM
 from algorithms.mDSDI.src.Trainer_mDSDI import Trainer_mDSDI
+from algorithms.mHSHA.src.Trainer_mHSHA import Trainer_mHSHA
+
 
 import wandb
-exp_name = "hospital agnostic 2_1"
+exp_name = "hospital agnostic 2_domain aligner"
 test = wandb.init(config = wandb.config, project= exp_name, entity="msikarou")
 
 def fix_random_seed(seed_value):
@@ -25,35 +27,12 @@ def fix_random_seed(seed_value):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-
-algorithms_map = {"ERM": Trainer_ERM, "mDSDI": Trainer_mDSDI}
-# def test_logger_function(logger):
-#     logger.log({'Accuracy/train': 100.0})
-
-
-
-
-# class test_logger_class():
-#     def __init__(self):
-#         # super(ZS_Domain_Classifier, self).__init__()
-#         # self.logger = logger
-#         wandb.log({'Accuracy/train/in class': 100.0})
-
-# def test_wandb():
-#     test.log({'test':3})
-
-# class test_wandb_class:
-#     def __init__(self):
-#         pass
-#     def method_test(self):
-#         test.log({'test':3})
-
-
+algorithms_map = {"ERM": Trainer_ERM, "mDSDI": Trainer_mDSDI, "mHSHA": Trainer_mHSHA}
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--config", default='./algorithms/mDSDI/configs/RCC_nci.json', help="Path to configuration file")
+    parser.add_argument("--config", default='./algorithms/mHSHA/configs/RCC_igc.json', help="Path to configuration file")
     parser.add_argument("--exp_idx", default='1',  help="Index of experiment")
     parser.add_argument("--gpu_idx", default='1', help="Index of GPU")
     bash_args = parser.parse_args()

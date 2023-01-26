@@ -10,8 +10,7 @@ import torch.nn as nn
 from algorithms.ERM.src.dataloaders import dataloader_factory
 from algorithms.ERM.src.models import model_factory
 from torch.utils.data import DataLoader
-# from torch.utils.tensorboard import SummaryWriter
-
+import wandb
 
 class Classifier(nn.Module):
     def __init__(self, feature_dim, classes):
@@ -28,7 +27,7 @@ def set_tr_val_samples_labels(meta_filenames, val_size):
 
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
-        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s+")
+        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
         data_frame = data_frame.sample(frac=1).reset_index(drop=True)
 
         split_idx = int(len(data_frame) * (1 - val_size))
@@ -45,7 +44,7 @@ def set_test_samples_labels(meta_filenames):
     sample_paths, class_labels = [], []
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
-        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s+")
+        data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
         sample_paths.extend(data_frame["filename"])
         class_labels.extend(data_frame["class_label"])
 
@@ -56,15 +55,6 @@ class Trainer_ERM:
     def __init__(self, args, device, exp_idx):
         self.args = args
         self.device = device
-        self.writer = self.set_writer(
-            log_dir="algorithms/"
-            + self.args.algorithm
-            # + "/results/tensorboards/"
-            + self.args.exp_name
-            + "_"
-            + exp_idx
-            + "/"
-        )
         self.checkpoint_name = (
             "algorithms/" + self.args.algorithm + "/results/checkpoints/" + self.args.exp_name + "_" + exp_idx
         )
@@ -129,12 +119,6 @@ class Trainer_ERM:
         self.criterion = nn.CrossEntropyLoss()
         self.val_loss_min = np.Inf
         self.val_acc_max = 0
-
-    def set_writer(self, log_dir):
-        if not os.path.exists(log_dir):
-            os.mkdir(log_dir)
-        shutil.rmtree(log_dir)
-        return SummaryWriter(log_dir)
 
     def save_plot(self):
         checkpoint = torch.load(self.checkpoint_name + ".pt")
@@ -223,20 +207,16 @@ class Trainer_ERM:
             self.optimizer.zero_grad()
             classification_loss.backward()
             self.optimizer.step()
+            print('iteration:',iteration)
+            print('--------')
+            print('Accuracy/train',100.0 * n_class_corrected / total_samples)
+            print('Loss/train',total_classification_loss / total_samples)
+            
 
+            wandb.log({'Accuracy/train': 100.0 * n_class_corrected / total_samples}, step=iteration)
+            wandb.log({'Loss/train': total_classification_loss / total_samples}, step=iteration)
+            
             if iteration % self.args.step_eval == 0:
-                self.writer.add_scalar("Accuracy/train", 100.0 * n_class_corrected / total_samples, iteration)
-                self.writer.add_scalar("Loss/train", total_classification_loss / total_samples, iteration)
-                logging.info(
-                    "Train set: Iteration: [{}/{}]\tAccuracy: {}/{} ({:.2f}%)\tLoss: {:.6f}".format(
-                        iteration,
-                        self.args.iterations,
-                        n_class_corrected,
-                        total_samples,
-                        100.0 * n_class_corrected / total_samples,
-                        total_classification_loss / total_samples,
-                    )
-                )
                 self.evaluate(iteration)
 
             n_class_corrected = 0
@@ -258,20 +238,21 @@ class Trainer_ERM:
 
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
+        
+        print('iteration:',iteration)
+        print('--------')
+        print('Accuracy/validate',100.0 * n_class_corrected / len(self.val_loader.dataset),n_iter)
+        print('Loss/validate',total_classification_loss / len(self.val_loader.dataset), n_iter)
+        
 
-        self.writer.add_scalar("Accuracy/validate", 100.0 * n_class_corrected / len(self.val_loader.dataset), n_iter)
-        self.writer.add_scalar("Loss/validate", total_classification_loss / len(self.val_loader.dataset), n_iter)
-        logging.info(
-            "Val set: Accuracy: {}/{} ({:.2f}%)\tLoss: {:.6f}".format(
-                n_class_corrected,
-                len(self.val_loader.dataset),
-                100.0 * n_class_corrected / len(self.val_loader.dataset),
-                total_classification_loss / len(self.val_loader.dataset),
-            )
-        )
+        
+
 
         val_acc = n_class_corrected / len(self.val_loader.dataset)
         val_loss = total_classification_loss / len(self.val_loader.dataset)
+
+        wandb.log({'Accuracy/validate': val_acc}, step=n_iter)
+        wandb.log({'Loss/validate': val_loss}, step=n_iter)
 
         self.model.train()
         self.classifier.train()
@@ -310,11 +291,6 @@ class Trainer_ERM:
                 predicted_classes = self.classifier(self.model(samples))
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
-
-        logging.info(
-            "Test set: Accuracy: {}/{} ({:.2f}%)".format(
-                n_class_corrected,
-                len(self.test_loader.dataset),
-                100.0 * n_class_corrected / len(self.test_loader.dataset),
-            )
-        )
+                
+        print('Test set accuracy', 100.0 * n_class_corrected / len(self.test_loader.dataset))
+        wandb.log({'Test set accuracy': 100.0 * n_class_corrected / len(self.test_loader.dataset)})
