@@ -198,6 +198,7 @@ class Trainer_mHSHA:
         self.zi_model = model_factory.get_model(self.args.model)().to(self.device)
         self.zs_model = model_factory.get_model(self.args.model)().to(self.device)
         
+        
 
 
         self.classifier = Classifier(feature_dim=self.args.feature_dim, classes=self.args.n_classes).to(self.device)
