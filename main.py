@@ -32,7 +32,7 @@ algorithms_map = {"ERM": Trainer_ERM, "mDSDI": Trainer_mDSDI, "mHSHA": Trainer_m
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--config", default='./algorithms/mHSHA/configs/RCC_igc.json', help="Path to configuration file")
+    parser.add_argument("--config", default='./algorithms/mHSHA/configs/RCC_nci.json', help="Path to configuration file")
     parser.add_argument("--exp_idx", default='1',  help="Index of experiment")
     parser.add_argument("--gpu_idx", default='1', help="Index of GPU")
     bash_args = parser.parse_args()
@@ -50,7 +50,6 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     trainer = algorithms_map[args.algorithm](args, device, bash_args.exp_idx)
-    # trainer = Trainer_mDSDI(args, device, bash_args.exp_idx)
     trainer.train()
     trainer.test()
     trainer.save_plot()

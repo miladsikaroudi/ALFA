@@ -1,5 +1,4 @@
 import copy
-import logging
 import os
 import pickle
 import shutil
@@ -457,7 +456,7 @@ class Trainer_mDSDI:
         n_class_corrected = 0
         total_classification_loss = 0
         with torch.no_grad():
-            for iteration, (samples, labels, domain_labels) in enumerate(self.val_loader):
+            for iteration, (samples, labels, domain_labels) in enumerate(self.test_loader):
                 samples, labels = samples.to(self.device), labels.to(self.device)
                 di_z, ds_z = self.zi_model(samples), self.zs_model(samples)
                 predicted_classes = self.classifier(di_z, ds_z)
@@ -466,13 +465,13 @@ class Trainer_mDSDI:
 
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
-        val_acc = n_class_corrected / len(self.val_loader.dataset)
-        val_loss = total_classification_loss / len(self.val_loader.dataset)
+        val_acc = n_class_corrected / len(self.test_loader.dataset)
+        val_loss = total_classification_loss / len(self.test_loader.dataset)
         print('iteration:', n_iter)
-        print('Val set accuracy', 100.0 * n_class_corrected / len(self.val_loader.dataset))
-        print('Val set loss', total_classification_loss / len(self.val_loader.dataset))
-        wandb.log({'Val set accuracy': 100.0 * n_class_corrected / len(self.val_loader.dataset)}, step=n_iter)
-        wandb.log({'Val set loss': total_classification_loss / len(self.val_loader.dataset)}, step=n_iter)
+        print('Val set accuracy', 100.0 * n_class_corrected / len(self.test_loader.dataset))
+        print('Val set loss', total_classification_loss / len(self.test_loader.dataset))
+        wandb.log({'Test set accuracy': 100.0 * n_class_corrected / len(self.test_loader.dataset)}, step=n_iter)
+        wandb.log({'Test set loss': total_classification_loss / len(self.test_loader.dataset)}, step=n_iter)
 
         self.zi_model.train()
         self.zs_model.train()
@@ -481,19 +480,19 @@ class Trainer_mDSDI:
         self.domain_discriminator.train()
 
         if self.args.val_size != 0:
-            if self.val_loss_min > val_loss:
-                self.val_loss_min = val_loss
-                torch.save(
-                    {
-                        "zi_model_state_dict": self.zi_model.state_dict(),
-                        "zs_model_state_dict": self.zs_model.state_dict(),
-                        "classifier_state_dict": self.classifier.state_dict(),
-                        "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
-                        "domain_discriminator_state_dict": self.domain_discriminator.state_dict(),
-                    },
-                    self.checkpoint_name + ".pt",
-                )
-        else:
+        #     if self.val_loss_min > val_loss:
+        #         self.val_loss_min = val_loss
+        #         torch.save(
+        #             {
+        #                 "zi_model_state_dict": self.zi_model.state_dict(),
+        #                 "zs_model_state_dict": self.zs_model.state_dict(),
+        #                 "classifier_state_dict": self.classifier.state_dict(),
+        #                 "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
+        #                 "domain_discriminator_state_dict": self.domain_discriminator.state_dict(),
+        #             },
+        #             self.checkpoint_name + ".pt",
+        #         )
+        # else:
             if self.val_acc_max < val_acc:
                 self.val_acc_max = val_acc
                 torch.save(

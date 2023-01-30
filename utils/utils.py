@@ -1,6 +1,12 @@
 import torch
 import torch.nn.functional as F
 from pytorch_metric_learning import miners, losses
+from pytorch_metric_learning.distances import CosineSimilarity
+from pytorch_metric_learning.reducers import ThresholdReducer
+from pytorch_metric_learning.regularizers import LpRegularizer
+from torchvision.transforms import functional as FV
+import torchvision.transforms as T
+import random
 
 
 
@@ -16,14 +22,42 @@ class TripletLoss(nn.Module):
     Args:
         margin (float): margin for triplet.
     """
-    def __init__(self, margin):
+    def __init__(self):
         super(TripletLoss, self).__init__()
         self.miner = miners.MultiSimilarityMiner()
-        self.loss_func = losses.TripletMarginLoss(margin)
+        
+        # self.loss_func = losses.TripletMarginLoss(margin)
+        self.loss_func = losses.TripletMarginLoss(distance = CosineSimilarity(), 
+				     reducer = ThresholdReducer(high=0.3), 
+			 	     embedding_regularizer = LpRegularizer())
 
     def forward(self, inputs, targets):
         hard_pairs = self.miner(inputs, targets)
         loss = self.loss_func(inputs, targets, hard_pairs)
+        return loss
+
+
+class AngularTripletLoss(nn.Module):
+
+    """Triplet loss with hard positive/negative mining.
+    Reference:
+    Hermans et al. In Defense of the Triplet Loss for Person Re-Identification. arXiv:1703.07737.
+    Code imported from https://github.com/Cysu/open-reid/blob/master/reid/loss/triplet.py.
+    Args:
+        margin (float): margin for triplet.
+    """
+    def __init__(self):
+        super(AngularTripletLoss, self).__init__()
+        # self.miner = miners.AngularMiner(angle=20)
+        
+        # self.loss_func = losses.TripletMarginLoss(margin)
+        self.loss_func = losses.AngularLoss(alpha=40, 
+				     reducer = ThresholdReducer(high=0.3), 
+			 	     embedding_regularizer = LpRegularizer())
+
+    def forward(self, inputs, targets):
+        # hard_pairs = self.miner(inputs, targets)
+        loss = self.loss_func(inputs, targets)
         return loss
 
 
@@ -61,3 +95,44 @@ def kd(data1=None, label1=None, data2=None, label2=None, bool_indicator=None, n_
     kd_loss = kd_loss / n_class
 
     return kd_loss, prob1s, prob2s
+
+
+class to_uint8_tensor(object):
+    """Rescale the image in a sample to a given size.
+
+    Args:
+        output_size (tuple or int): Desired output size. If tuple, output is
+            matched to output_size. If int, smaller of image edges is matched
+            to output_size keeping aspect ratio the same.
+    """
+    def __call__(self, sample):
+        normalized_tensor = (sample-sample.min())/(sample.max()-sample.min())
+        normalized_tensor = normalized_tensor * 255.0  # case [0, 1]
+        normalized_tensor = torch.clip(normalized_tensor, 0.0, 255.0)
+        return FV.to_pil_image(normalized_tensor.type(torch.uint8))
+
+from torch.utils.data import Dataset
+
+class SSLBatchDataloader(Dataset):
+    def __init__(self, batch_data):
+        self.self_supervision_transform = T.Compose([
+                    T.AutoAugment(T.AutoAugmentPolicy.IMAGENET),
+                    T.ToTensor(),
+                    # T.RandomErasing(),
+                    # T.RandomGrayscale(p = 0.35)
+                    ]) 
+        self.batch_data = batch_data
+
+    def get_image(self, idx):
+        sample = self.batch_data[idx,:,:,:]
+        normalized_tensor = (sample-sample.min())/(sample.max()-sample.min())
+        normalized_tensor = normalized_tensor * 255.0  # case [0, 1]
+        normalized_tensor = torch.clip(normalized_tensor, 0.0, 255.0)
+        return self.self_supervision_transform(FV.to_pil_image(normalized_tensor.type(torch.uint8)))
+
+    def __len__(self):
+        return self.batch_data.shape[0]
+
+    def __getitem__(self, index):
+        sample = self.get_image(index)
+        return sample

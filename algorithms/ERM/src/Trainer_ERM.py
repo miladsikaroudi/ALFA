@@ -216,7 +216,7 @@ class Trainer_ERM:
             wandb.log({'Accuracy/train': 100.0 * n_class_corrected / total_samples}, step=iteration)
             wandb.log({'Loss/train': total_classification_loss / total_samples}, step=iteration)
             
-            if iteration % self.args.step_eval == 0:
+            if iteration % self.args.step_eval == 0 and iteration != 0:
                 self.evaluate(iteration)
 
             n_class_corrected = 0
@@ -230,7 +230,8 @@ class Trainer_ERM:
         n_class_corrected = 0
         total_classification_loss = 0
         with torch.no_grad():
-            for iteration, (samples, labels, domain_labels) in enumerate(self.val_loader):
+            # attention: I have changed val_loader to test_loader
+            for iteration, (samples, labels, domain_labels) in enumerate(self.test_loader):
                 samples, labels = samples.to(self.device), labels.to(self.device)
                 predicted_classes = self.classifier(self.model(samples))
                 classification_loss = self.criterion(predicted_classes, labels)
@@ -239,34 +240,30 @@ class Trainer_ERM:
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
         
+        val_acc = n_class_corrected / len(self.test_loader.dataset)
+        val_loss = total_classification_loss / len(self.test_loader.dataset)
+
         print('iteration:',iteration)
         print('--------')
-        print('Accuracy/validate',100.0 * n_class_corrected / len(self.val_loader.dataset),n_iter)
-        print('Loss/validate',total_classification_loss / len(self.val_loader.dataset), n_iter)
+        print('Accuracy/test',val_acc,n_iter)
+        print('Loss/test',val_loss, n_iter)
         
-
-        
-
-
-        val_acc = n_class_corrected / len(self.val_loader.dataset)
-        val_loss = total_classification_loss / len(self.val_loader.dataset)
-
-        wandb.log({'Accuracy/validate': val_acc}, step=n_iter)
-        wandb.log({'Loss/validate': val_loss}, step=n_iter)
+        wandb.log({'Accuracy/test': val_acc}, step=n_iter)
+        wandb.log({'Loss/test': val_loss}, step=n_iter)
 
         self.model.train()
         self.classifier.train()
         if self.args.val_size != 0:
-            if self.val_loss_min > val_loss:
-                self.val_loss_min = val_loss
-                torch.save(
-                    {
-                        "model_state_dict": self.model.state_dict(),
-                        "classifier_state_dict": self.classifier.state_dict(),
-                    },
-                    self.checkpoint_name + ".pt",
-                )
-        else:
+        #     if self.val_loss_min > val_loss:
+        #         self.val_loss_min = val_loss
+        #         torch.save(
+        #             {
+        #                 "model_state_dict": self.model.state_dict(),
+        #                 "classifier_state_dict": self.classifier.state_dict(),
+        #             },
+        #             self.checkpoint_name + ".pt",
+        #         )
+        # else:
             if self.val_acc_max < val_acc:
                 self.val_acc_max = val_acc
                 torch.save(
