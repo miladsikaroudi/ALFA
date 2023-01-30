@@ -11,6 +11,8 @@ from algorithms.mHSHA.src.models import model_factory
 from torch.utils.data import DataLoader
 import wandb
 from utils.utils import *
+import torchvision.transforms as T
+
 
 
 class Domain_Aligner(nn.Module):
@@ -35,14 +37,17 @@ class Triplet_Encoder(nn.Module):
         self.encoder = nn.Sequential(
             nn.Linear(feature_dim, int(feature_dim/encoding_rate)),
             nn.ReLU(),
-            nn.Linear(int(feature_dim/(encoding_rate)), int(feature_dim/pow(encoding_rate,2))),
-            nn.ReLU(),
-            nn.Linear(int(feature_dim/pow(encoding_rate,2)), int(feature_dim/pow(encoding_rate,3))),
+            nn.Linear(int(feature_dim/(encoding_rate)), int(feature_dim/(encoding_rate))),
+
+            # nn.Linear(int(feature_dim/(encoding_rate)), int(feature_dim/pow(encoding_rate,2))),
+            # nn.ReLU(),
+            # nn.Linear(int(feature_dim/pow(encoding_rate,2)), int(feature_dim/pow(encoding_rate,3))),
         )
 
     def forward(self, di_z):
         y = self.encoder(di_z)
         return y
+
 
 class Classifier(nn.Module):
     def __init__(self, feature_dim, classes):
@@ -192,6 +197,8 @@ class Trainer_mHSHA:
         )
         self.zi_model = model_factory.get_model(self.args.model)().to(self.device)
         self.zs_model = model_factory.get_model(self.args.model)().to(self.device)
+        
+
 
         self.classifier = Classifier(feature_dim=self.args.feature_dim, classes=self.args.n_classes).to(self.device)
         self.zs_domain_classifier = ZS_Domain_Classifier(
@@ -200,16 +207,18 @@ class Trainer_mHSHA:
         self.domain_aligner = Domain_Aligner(
             feature_dim=self.args.feature_dim, class_classes=self.args.n_classes
         ).to(self.device)
-        self.triplet_encoder = Triplet_Encoder(
-            feature_dim=self.args.feature_dim, encoding_rate=2
-        ).to(self.device)
+        # self.triplet_encoder = Triplet_Encoder(
+        #     feature_dim=self.args.feature_dim, encoding_rate=2
+        # ).to(self.device)
+
+               
 
         optimizer_params = (
             list(self.zi_model.parameters())
             + list(self.zs_model.parameters())
             + list(self.classifier.parameters())
             + list(self.domain_aligner.parameters())
-            + list(self.triplet_encoder.parameters())
+            # + list(self.triplet_encoder.parameters())
             + list(self.zs_domain_classifier.parameters())
         )
         self.optimizer = torch.optim.Adam(optimizer_params, lr=self.args.learning_rate)
@@ -217,7 +226,8 @@ class Trainer_mHSHA:
         meta_optimizer_params = list(self.zs_model.parameters()) + list(self.classifier.parameters())
         self.meta_optimizer = torch.optim.Adam(meta_optimizer_params, lr=self.args.learning_rate)
         self.criterion = nn.CrossEntropyLoss()
-        self.criterion_triplet = TripletLoss(margin=0.03)
+        self.criterion_triplet = AngularTripletLoss()
+        # self.criterion_triplet = TripletLoss()
         self.criterion_kd = kd
         self.reconstruction_criterion = nn.MSELoss()
         self.val_loss_min = np.Inf
@@ -230,14 +240,14 @@ class Trainer_mHSHA:
         self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
         self.zs_domain_classifier.load_state_dict(checkpoint["zs_domain_classifier_state_dict"])
         self.domain_aligner.load_state_dict(checkpoint["domain_aligner_state_dict"])
-        self.triplet_encoder.load_state_dict(checkpoint["triplet_encoder_state_dict"])
+        # self.triplet_encoder.load_state_dict(checkpoint["triplet_encoder_state_dict"])
 
         self.zi_model.eval()
         self.zs_model.eval()
         self.classifier.eval()
         self.zs_domain_classifier.eval()
         self.domain_aligner.eval()
-        self.triplet_encoder.eval()
+        # self.triplet_encoder.eval()
 
         Zi_out, Zs_out, Y_out, Y_domain_out = [], [], [], []
         Zi_test, Zs_test, Y_test, Y_domain_test = [], [], [], []
@@ -295,7 +305,7 @@ class Trainer_mHSHA:
         self.classifier.train()
         self.zs_domain_classifier.train()
         self.domain_aligner.train()
-        self.triplet_encoder.train()
+        # self.triplet_encoder.train()
 
         n_class_corrected = 0
         n_zs_domain_class_corrected = 0
@@ -305,8 +315,9 @@ class Trainer_mHSHA:
         total_zsc_loss = 0
         total_disentangle_loss = 0
         total_samples = 0
+        total_aligner_sample = 0
         total_meta_samples = 0
-        total_triplet_loss = 0
+        total_self_supervision_loss = 0
 
         self.train_iter_loaders = []
         for train_loader in self.train_loaders:
@@ -346,9 +357,21 @@ class Trainer_mHSHA:
             di_z, ds_z = self.zi_model(tr_samples), self.zs_model(tr_samples)
 
             # Triplet loss
-            dm_z = self.triplet_encoder(di_z)
-            triplet_loss = self.criterion_triplet(dm_z, tr_labels)
-            total_triplet_loss += triplet_loss.item()
+            # dm_z = self.triplet_encoder(di_z)
+            self.SSL_loader = DataLoader(
+                SSLBatchDataloader(tr_samples),
+                batch_size=tr_samples.shape[0],
+                shuffle=False,
+            )
+            iterator_SSL = iter(self.SSL_loader)
+            data_SSL = next(iterator_SSL).to(self.device)
+            augmented_di_z = self.zi_model(data_SSL)
+            dummy_labels = torch.arange(augmented_di_z.size(0))
+
+            embeddings_diz = torch.cat([di_z, augmented_di_z], dim=0)
+            dummy_labels_concat = torch.cat([dummy_labels, dummy_labels], dim=0)
+            self_supervision_loss = self.criterion_triplet(embeddings_diz, dummy_labels_concat)
+            total_self_supervision_loss += self_supervision_loss.item()
 
             # Distangle by Covariance Matrix
             mdi_z = torch.mean(di_z, 0)
@@ -378,14 +401,15 @@ class Trainer_mHSHA:
             classification_loss = self.criterion(predicted_classes, tr_labels )
             total_classification_loss += classification_loss.item()
 
-            total_loss = 10e-1*classification_loss + 1e5*domain_alignment_loss + 10e-1*triplet_loss + \
-                10e-1*predicted_domain_ds_loss + 10e-1*disentangle_loss
+            total_loss = 10e-1*classification_loss + 1e5*domain_alignment_loss + 10e-1*self_supervision_loss + \
+                5e-1*predicted_domain_ds_loss + 1e2*disentangle_loss
 
             _, ds_predicted_classes = torch.max(ds_predicted_classes, 1)
             n_zs_domain_class_corrected += (ds_predicted_classes == tr_domain_labels).sum().item()
             _, predicted_classes = torch.max(predicted_classes, 1)
             n_class_corrected += (predicted_classes == tr_labels).sum().item()
 
+            total_aligner_sample += len(domain_1_samples) +len(domain_2_samples)
             total_samples += len(tr_samples)
 
             self.optimizer.zero_grad()
@@ -454,8 +478,8 @@ class Trainer_mHSHA:
             print('Accuracy/domainZS_train',100.0 * n_zs_domain_class_corrected / total_samples)
 
             print('Loss/train',total_classification_loss / total_class_samples)
-            print('Loss/domain aligment_train',total_domain_alignment_loss / total_samples)
-            print('Loss/metric',total_triplet_loss / total_samples)
+            print('Loss/domain aligment_train',total_domain_alignment_loss / total_aligner_sample)
+            print('Loss/metric',total_self_supervision_loss / total_samples)
             print('Loss/domainZS_train',total_zsc_loss / total_samples)
             print('Loss/disentangle',total_disentangle_loss / total_samples)
 
@@ -463,8 +487,8 @@ class Trainer_mHSHA:
             wandb.log({'Accuracy/domainZS_train':100.0 * n_zs_domain_class_corrected / total_samples}, step=iteration)
 
             wandb.log({'Loss/train': total_classification_loss / total_class_samples}, step=iteration)
-            wandb.log({'Loss/domain aligment_train': total_domain_alignment_loss / total_samples}, step=iteration)
-            wandb.log({'Loss/metric': total_triplet_loss / total_samples}, step=iteration)
+            wandb.log({'Loss/domain aligment_train': total_domain_alignment_loss / total_aligner_sample}, step=iteration)
+            wandb.log({'Loss/metric': total_self_supervision_loss / total_samples}, step=iteration)
             wandb.log({'Loss/domainZS_train': total_zsc_loss / total_samples}, step=iteration)
             wandb.log({'Loss/disentangle': total_disentangle_loss / total_samples}, step=iteration)
             
@@ -474,11 +498,13 @@ class Trainer_mHSHA:
             n_class_corrected = 0
             n_zs_domain_class_corrected = 0
             total_domain_alignment_loss = 0
-            total_triplet_loss = 0
+            total_self_supervision_loss = 0
             total_classification_loss = 0
             total_zsc_loss = 0
             total_disentangle_loss = 0
             total_samples = 0
+            total_aligner_sample = 0
+            total_aligner_sample = 0
             total_meta_samples = 0
 
     def evaluate(self, n_iter):
@@ -487,11 +513,31 @@ class Trainer_mHSHA:
         self.classifier.eval()
         self.zs_domain_classifier.eval()
         self.domain_aligner.eval()
+        # self.triplet_encoder.eval()
 
         n_class_corrected = 0
         total_classification_loss = 0
+        # with torch.no_grad():
+        #     ######### attention : changed the val_loader to test_loader
+        #     for iteration, (samples, labels, domain_labels) in enumerate(self.val_loader):
+        #         samples, labels = samples.to(self.device), labels.to(self.device)
+        #         di_z, ds_z = self.zi_model(samples), self.zs_model(samples)
+        #         predicted_classes = self.classifier(di_z, ds_z)
+        #         classification_loss = self.criterion(predicted_classes, labels )
+        #         total_classification_loss += classification_loss.item()
+
+        #         _, predicted_classes = torch.max(predicted_classes, 1)
+        #         n_class_corrected += (predicted_classes == labels).sum().item()
+        # val_acc = n_class_corrected / len(self.val_loader.dataset)
+        # val_loss = total_classification_loss / len(self.val_loader.dataset)
+        # print('iteration:', n_iter)
+        # print('Val set accuracy', 100.0 * n_class_corrected / len(self.val_loader.dataset))
+        # print('Val set loss', total_classification_loss / len(self.val_loader.dataset))
+        # wandb.log({'Val set accuracy': 100.0 * n_class_corrected / len(self.val_loader.dataset)}, step=n_iter)
+        # wandb.log({'Val set loss': total_classification_loss / len(self.val_loader.dataset)}, step=n_iter)
         with torch.no_grad():
-            for iteration, (samples, labels, domain_labels) in enumerate(self.val_loader):
+            ######### attention : changed the val_loader to test_loader
+            for iteration, (samples, labels, domain_labels) in enumerate(self.test_loader):
                 samples, labels = samples.to(self.device), labels.to(self.device)
                 di_z, ds_z = self.zi_model(samples), self.zs_model(samples)
                 predicted_classes = self.classifier(di_z, ds_z)
@@ -500,34 +546,36 @@ class Trainer_mHSHA:
 
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
-        val_acc = n_class_corrected / len(self.val_loader.dataset)
-        val_loss = total_classification_loss / len(self.val_loader.dataset)
+        val_acc = n_class_corrected / len(self.test_loader.dataset)
+        val_loss = total_classification_loss / len(self.test_loader.dataset)
         print('iteration:', n_iter)
-        print('Val set accuracy', 100.0 * n_class_corrected / len(self.val_loader.dataset))
-        print('Val set loss', total_classification_loss / len(self.val_loader.dataset))
-        wandb.log({'Val set accuracy': 100.0 * n_class_corrected / len(self.val_loader.dataset)}, step=n_iter)
-        wandb.log({'Val set loss': total_classification_loss / len(self.val_loader.dataset)}, step=n_iter)
-
+        print('test set accuracy', 100.0 * n_class_corrected / len(self.test_loader.dataset))
+        print('test set loss', total_classification_loss / len(self.test_loader.dataset))
+        wandb.log({'test set accuracy': 100.0 * n_class_corrected / len(self.test_loader.dataset)}, step=n_iter)
+        wandb.log({'test set loss': total_classification_loss / len(self.test_loader.dataset)}, step=n_iter)
         self.zi_model.train()
         self.zs_model.train()
         self.classifier.train()
         self.zs_domain_classifier.train()
         self.domain_aligner.train()
+        # self.triplet_encoder.train()
 
         if self.args.val_size != 0:
-            if self.val_loss_min > val_loss:
-                self.val_loss_min = val_loss
-                torch.save(
-                    {
-                        "zi_model_state_dict": self.zi_model.state_dict(),
-                        "zs_model_state_dict": self.zs_model.state_dict(),
-                        "classifier_state_dict": self.classifier.state_dict(),
-                        "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
-                        "domain_aligner_state_dict": self.domain_aligner.state_dict(),
-                    },
-                    self.checkpoint_name + ".pt",
-                )
-        else:
+            # if self.val_loss_min > val_loss:
+            #     self.val_loss_min = val_loss
+            #     torch.save(
+            #         {
+            #             "zi_model_state_dict": self.zi_model.state_dict(),
+            #             "zs_model_state_dict": self.zs_model.state_dict(),
+            #             "classifier_state_dict": self.classifier.state_dict(),
+            #             "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
+            #             "domain_aligner_state_dict": self.domain_aligner.state_dict(),
+            #             "triplet_encoder_state_dict": self.triplet_encoder.state_dict(),
+
+            #         },
+            #         self.checkpoint_name + ".pt",
+            #     )
+        # else:
             if self.val_acc_max < val_acc:
                 self.val_acc_max = val_acc
                 torch.save(
@@ -537,6 +585,7 @@ class Trainer_mHSHA:
                         "classifier_state_dict": self.classifier.state_dict(),
                         "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
                         "domain_aligner_state_dict": self.domain_aligner.state_dict(),
+                        # "triplet_encoder_state_dict": self.triplet_encoder.state_dict(),
                     },
                     self.checkpoint_name + ".pt",
                 )
@@ -548,11 +597,13 @@ class Trainer_mHSHA:
         self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
         self.zs_domain_classifier.load_state_dict(checkpoint["zs_domain_classifier_state_dict"])
         self.domain_aligner.load_state_dict(checkpoint["domain_aligner_state_dict"])
+        # self.triplet_encoder.load_state_dict(checkpoint["triplet_encoder_state_dict"])
         self.zi_model.eval()
         self.zs_model.eval()
         self.classifier.eval()
         self.zs_domain_classifier.eval()
         self.domain_aligner.eval()
+        # self.triplet_encoder.eval()
 
         n_class_corrected = 0
         with torch.no_grad():
