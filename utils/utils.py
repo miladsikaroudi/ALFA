@@ -5,61 +5,98 @@ from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.reducers import ThresholdReducer
 from pytorch_metric_learning.regularizers import LpRegularizer
 from torchvision.transforms import functional as FV
+from torch.utils.data import Dataset
 import torchvision.transforms as T
-import random
-
+from . import common_functions as c_f
+from . import losses_and_miners_utils as lmu
 
 
 import torch
 from torch import nn
 
-class TripletLoss(nn.Module):
+class TripletMarginLoss(nn.Module):
 
-    """Triplet loss with hard positive/negative mining.
-    Reference:
-    Hermans et al. In Defense of the Triplet Loss for Person Re-Identification. arXiv:1703.07737.
-    Code imported from https://github.com/Cysu/open-reid/blob/master/reid/loss/triplet.py.
-    Args:
-        margin (float): margin for triplet.
+    """ Sampling Matters in Deep Embedding Learning: https://arxiv.org/pdf/1706.07567.pdf
     """
-    def __init__(self):
-        super(TripletLoss, self).__init__()
-        self.miner = miners.MultiSimilarityMiner()
-        
-        # self.loss_func = losses.TripletMarginLoss(margin)
-        self.loss_func = losses.TripletMarginLoss(distance = CosineSimilarity(), 
-				     reducer = ThresholdReducer(high=0.3), 
-			 	     embedding_regularizer = LpRegularizer())
+    def __init__(self, margin):
+        super(TripletMarginLoss, self).__init__()
+
+        self.miner = miners.TripletMarginMiner(margin=1.5, type_of_triplets="semihard")
+
+        # self.miner = miners.MultiSimilarityMiner()
+
+        # self.loss_func = losses.MarginLoss(margin=3.0, 
+        #         nu=0, 
+        #         beta=1.2, 
+        #         # triplets_per_anchor="all", 
+        #         # learn_beta=False, 
+        #         # num_classes=None, 
+        #         reducer = ThresholdReducer(low=0.3),
+        #         # embedding_regularizer = LpRegularizer()
+        #         )
+
+        self.loss_func = TripletMarginLossCollapsePrevention(margin, 
+                # nu=0, 
+                # beta=1.2, 
+                # # triplets_per_anchor="all", 
+                # # learn_beta=False, 
+                # # num_classes=None, 
+                # reducer = ThresholdReducer(low=0.3),
+                # # embedding_regularizer = LpRegularizer()
+                )
 
     def forward(self, inputs, targets):
-        hard_pairs = self.miner(inputs, targets)
-        loss = self.loss_func(inputs, targets, hard_pairs)
+        semihard_pairs = self.miner(inputs, targets)
+        loss = self.loss_func(inputs, targets, semihard_pairs)
         return loss
 
+class TripletMarginLossCollapsePrevention(losses.BaseMetricLossFunction):
 
-class AngularTripletLoss(nn.Module):
+    def __init__(
+        self,
+        margin=0.05,
+        swap=False,
+        smooth_loss=False,
+        triplets_per_anchor="all",
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.margin = margin
+        self.swap = swap
+        self.smooth_loss = smooth_loss
+        self.triplets_per_anchor = triplets_per_anchor
+        self.add_to_recordable_attributes(list_of_names=["margin"], is_stat=False)
 
-    """Triplet loss with hard positive/negative mining.
-    Reference:
-    Hermans et al. In Defense of the Triplet Loss for Person Re-Identification. arXiv:1703.07737.
-    Code imported from https://github.com/Cysu/open-reid/blob/master/reid/loss/triplet.py.
-    Args:
-        margin (float): margin for triplet.
-    """
-    def __init__(self):
-        super(AngularTripletLoss, self).__init__()
-        # self.miner = miners.AngularMiner(angle=20)
-        
-        # self.loss_func = losses.TripletMarginLoss(margin)
-        self.loss_func = losses.AngularLoss(alpha=40, 
-				     reducer = ThresholdReducer(high=0.3), 
-			 	     embedding_regularizer = LpRegularizer())
+    def compute_loss(self, embeddings, labels, indices_tuple, ref_emb, ref_labels):
+        c_f.labels_or_indices_tuple_required(labels, indices_tuple)
+        indices_tuple = lmu.convert_to_triplets(
+            indices_tuple, labels, ref_labels, t_per_anchor=self.triplets_per_anchor
+        )
+        anchor_idx, positive_idx, negative_idx = indices_tuple
+        if len(anchor_idx) == 0:
+            return self.zero_losses()
+        mat = self.distance(embeddings, ref_emb)
+        ap_dists = mat[anchor_idx, positive_idx]
+        an_dists = mat[anchor_idx, negative_idx]
+        if self.swap:
+            pn_dists = mat[positive_idx, negative_idx]
+            an_dists = self.distance.smallest_dist(an_dists, pn_dists)
 
-    def forward(self, inputs, targets):
-        # hard_pairs = self.miner(inputs, targets)
-        loss = self.loss_func(inputs, targets)
-        return loss
+        current_margins = self.distance.margin(ap_dists, an_dists)
+        current_margins /= (an_dists.mean() + 1e-17)
+        violation = current_margins + self.margin
+        if self.smooth_loss:
+            loss = torch.nn.functional.softplus(violation)
+        else:
+            loss = torch.nn.functional.relu(violation)
 
+        return {
+            "loss": {
+                "losses": loss,
+                "indices": indices_tuple,
+                "reduction_type": "triplet",
+            }
+        }
 
 def kd(data1=None, label1=None, data2=None, label2=None, bool_indicator=None, n_class=3, temperature=2.0):
     label1 = F.one_hot(label1 , n_class).double()
@@ -96,7 +133,6 @@ def kd(data1=None, label1=None, data2=None, label2=None, bool_indicator=None, n_
 
     return kd_loss, prob1s, prob2s
 
-
 class to_uint8_tensor(object):
     """Rescale the image in a sample to a given size.
 
@@ -111,13 +147,12 @@ class to_uint8_tensor(object):
         normalized_tensor = torch.clip(normalized_tensor, 0.0, 255.0)
         return FV.to_pil_image(normalized_tensor.type(torch.uint8))
 
-from torch.utils.data import Dataset
-
 class SSLBatchDataloader(Dataset):
     def __init__(self, batch_data):
         self.self_supervision_transform = T.Compose([
-                    T.AutoAugment(T.AutoAugmentPolicy.IMAGENET),
+                    # T.AutoAugment(T.AutoAugmentPolicy.IMAGENET),
                     T.ToTensor(),
+                    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                     # T.RandomErasing(),
                     # T.RandomGrayscale(p = 0.35)
                     ]) 

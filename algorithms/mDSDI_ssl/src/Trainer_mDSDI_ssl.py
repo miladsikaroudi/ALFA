@@ -1,34 +1,47 @@
 import copy
 import os
 import pickle
+import shutil
 
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from algorithms.mHSHA.src.dataloaders import dataloader_factory
-from algorithms.mHSHA.src.models import model_factory
+from algorithms.mDSDI_ssl.src.dataloaders import dataloader_factory
+from algorithms.mDSDI_ssl.src.models import model_factory
 from torch.utils.data import DataLoader
 import wandb
 from utils.utils import *
-import torchvision.transforms as T
 
 
 
-class Domain_Aligner(nn.Module):
-    def __init__(self, feature_dim, class_classes):
-        super(Domain_Aligner, self).__init__()
+class GradReverse(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -grad_output
+
+
+class Domain_Discriminator(nn.Module):
+    def __init__(self, feature_dim, domain_classes):
+        super(Domain_Discriminator, self).__init__()
         self.class_classifier = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
-            nn.Linear(feature_dim, feature_dim),
+            nn.Linear(feature_dim, 256),
+            # nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
-            nn.Linear(feature_dim, class_classes),
+            # nn.Linear(feature_dim, domain_classes),
+            nn.Linear(256, domain_classes),
         )
 
     def forward(self, di_z):
-        y = self.class_classifier(di_z)
+        y = self.class_classifier(GradReverse.apply(di_z))
         return y
+
 
 class Classifier(nn.Module):
     def __init__(self, feature_dim, classes):
@@ -50,13 +63,6 @@ class ZS_Domain_Classifier(nn.Module):
         y = self.class_classifier(ds_z)
         return y
 
-def random_pairs_of_domains(samples, labels, domain_labels):
-    perm = torch.randperm(torch.unique(domain_labels).size(0))
-    fixed_domain_samples = samples[domain_labels == perm[0]]
-    fixed_domain_labels = labels[domain_labels == perm[0]]
-    variable_domain_samples = samples[domain_labels == perm[1]]
-    variable_domain_labels = labels[domain_labels == perm[1]]
-    return (fixed_domain_samples, fixed_domain_labels), (variable_domain_samples, variable_domain_labels)
 
 def random_pairs_of_minibatches(samples, labels):
     perm = torch.randperm(len(samples)).tolist()
@@ -107,19 +113,10 @@ def set_test_samples_labels(meta_filenames):
     return sample_paths, class_labels
 
 
-class Trainer_mHSHA:
+class Trainer_mDSDI_ssl:
     def __init__(self, args, device, exp_idx):
         self.args = args
         self.device = device
-        # self.writer = self.set_writer(
-        #     log_dir="algorithms/"
-        #     + self.args.algorithm
-        #     + "/results/tensorboards/"
-        #     + self.args.exp_name
-        #     + "_"
-        #     + exp_idx
-        #     + "/"
-        # )
         
         self.checkpoint_name = (
             "algorithms/" + self.args.algorithm + "/results/checkpoints/" + self.args.exp_name + "_" + exp_idx
@@ -179,35 +176,31 @@ class Trainer_mHSHA:
         self.zi_model = model_factory.get_model(self.args.model)().to(self.device)
         self.zs_model = model_factory.get_model(self.args.model)().to(self.device)
         self.zssl_model = model_factory.get_model(self.args.model)().to(self.device)
-        
-        
-
 
         self.classifier = Classifier(feature_dim=self.args.feature_dim, classes=self.args.n_classes).to(self.device)
-
         self.zs_domain_classifier = ZS_Domain_Classifier(
             feature_dim=self.args.feature_dim, domain_classes=self.args.n_domain_classes
         ).to(self.device)
-
-        self.domain_aligner = Domain_Aligner(
-            feature_dim=self.args.feature_dim, class_classes=self.args.n_classes
+        self.domain_discriminator = Domain_Discriminator(
+            feature_dim=self.args.feature_dim, domain_classes=self.args.n_domain_classes
         ).to(self.device)
-               
+
         optimizer_params = (
             list(self.zi_model.parameters())
             + list(self.zs_model.parameters())
             + list(self.zssl_model.parameters())
             + list(self.classifier.parameters())
-            + list(self.domain_aligner.parameters())
+            + list(self.domain_discriminator.parameters())
             + list(self.zs_domain_classifier.parameters())
         )
         self.optimizer = torch.optim.Adam(optimizer_params, lr=self.args.learning_rate)
 
         meta_optimizer_params = list(self.zs_model.parameters()) + list(self.classifier.parameters())
         self.meta_optimizer = torch.optim.Adam(meta_optimizer_params, lr=self.args.learning_rate)
+        self.criterion_triplet = TripletMarginLoss(margin=10.0)
+        # self.criterion_triplet = TripletMarginLossCollapsePrevention(margin=10.0)
+        
         self.criterion = nn.CrossEntropyLoss()
-        self.criterion_triplet = TripletMarginLoss()
-        self.criterion_kd = kd
         self.reconstruction_criterion = nn.MSELoss()
         self.val_loss_min = np.Inf
         self.val_acc_max = 0
@@ -219,14 +212,14 @@ class Trainer_mHSHA:
         self.zssl_model.load_state_dict(checkpoint["zssl_model_state_dict"])
         self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
         self.zs_domain_classifier.load_state_dict(checkpoint["zs_domain_classifier_state_dict"])
-        self.domain_aligner.load_state_dict(checkpoint["domain_aligner_state_dict"])
-        
+        self.domain_discriminator.load_state_dict(checkpoint["domain_discriminator_state_dict"])
+
         self.zi_model.eval()
         self.zs_model.eval()
         self.zssl_model.eval()
         self.classifier.eval()
         self.zs_domain_classifier.eval()
-        self.domain_aligner.eval()
+        self.domain_discriminator.eval()
 
         Zi_out, Zs_out, Zssl_out, Y_out, Y_domain_out = [], [], [], [], []
         Zi_test, Zs_test, Zssl_test, Y_test, Y_domain_test = [], [], [], [], []
@@ -290,21 +283,21 @@ class Trainer_mHSHA:
         self.zssl_model.train()
         self.classifier.train()
         self.zs_domain_classifier.train()
-        self.domain_aligner.train()
+        self.domain_discriminator.train()
 
         n_class_corrected = 0
+        n_domain_class_corrected = 0
         n_zs_domain_class_corrected = 0
 
         total_classification_loss = 0
-        total_domain_alignment_loss = 0
+        total_dc_loss = 0
+        total_self_supervision_loss = 0
         total_zsc_loss = 0
-        total_i_s_disentangle_loss = 0
+        total_disentangle_loss = 0
+        total_s_ssl_disentangle_loss = 0
         total_i_ssl_disentangle_loss = 0
         total_samples = 0
-        total_aligner_sample = 0
         total_meta_samples = 0
-        total_self_supervision_loss = 0
-
         self.train_iter_loaders = []
         for train_loader in self.train_loaders:
             self.train_iter_loaders.append(iter(train_loader))
@@ -328,21 +321,22 @@ class Trainer_mHSHA:
             tr_domain_labels = torch.cat(domain_labels, dim=0).to(self.device)
 
             di_z, ds_z, dssl_z = self.zi_model(tr_samples), self.zs_model(tr_samples), self.zssl_model(tr_samples)
-            
-            # kl loss to align domains
-            (domain_1_samples, domain_1_labels), (domain_2_samples, domain_2_labels) = \
-                random_pairs_of_domains(tr_samples, tr_labels, tr_domain_labels)
-            di_z_d1, di_z_d2 = self.zi_model(domain_1_samples), self.zi_model(domain_2_samples)
 
-            di_d1_predicted_class = self.domain_aligner(di_z_d1)
-            di_d2_predicted_class = self.domain_aligner(di_z_d2)
-            domain_alignment_loss, _, _ = self.criterion_kd(di_d1_predicted_class, domain_1_labels, di_d2_predicted_class, domain_2_labels)
-            total_domain_alignment_loss += domain_alignment_loss.item()
+            # Distangle i and s by Covariance Matrix
+
+            mdi_z = torch.mean(di_z, 0)
+            mds_z = torch.mean(ds_z, 0)
+
+            di_z_n = di_z - mdi_z[None, :]
+            ds_z_n = ds_z - mds_z[None, :]
+            C = di_z_n[:, :, None] * ds_z_n[:, None, :]
+
+            target_cr = torch.zeros(C.shape[0], C.shape[1], C.shape[2]).to(self.device)
+            disentangle_loss = nn.MSELoss()(C, target_cr)
+            total_disentangle_loss += disentangle_loss.item()
 
 
             # self_supervision 
-            dssl_z = self.zssl_model(tr_samples)
-
             self.SSL_loader = DataLoader(
                 SSLBatchDataloader(tr_samples),
                 batch_size=tr_samples.shape[0],
@@ -359,18 +353,15 @@ class Trainer_mHSHA:
             self_supervision_loss = self.criterion_triplet(embeddings_dsslz, dummy_labels_concat)
             total_self_supervision_loss += self_supervision_loss.item()
 
-            # Distangle i and s by Covariance Matrix
-            mdi_z = torch.mean(di_z, 0)
-            mds_z = torch.mean(ds_z, 0)
+            # Distangle s and ssl by Covariance Matrix
+            mdssl_z = torch.mean(dssl_z, 0)
 
-            di_z_n = di_z - mdi_z[None, :]
-            ds_z_n = ds_z - mds_z[None, :]
-            C_i_s = di_z_n[:, :, None] * ds_z_n[:, None, :]
+            dssl_z_n = dssl_z - mdssl_z[None, :]
+            C_s_ssl = ds_z_n[:, :, None] * dssl_z_n[:, None, :]
 
-            target_cr_i_s = torch.zeros(C_i_s.shape[0], C_i_s.shape[1], C_i_s.shape[2]).to(self.device)
-            disentangle_i_s_loss = nn.MSELoss()(C_i_s, target_cr_i_s)
-            total_i_s_disentangle_loss += disentangle_i_s_loss.item()
-
+            target_cr_s_ssl = torch.zeros(C_s_ssl.shape[0], C_s_ssl.shape[1], C_s_ssl.shape[2]).to(self.device)
+            disentangle_s_ssl_loss = nn.MSELoss()(C_s_ssl, target_cr_s_ssl)
+            total_s_ssl_disentangle_loss += disentangle_s_ssl_loss.item()
 
             # Distangle i and ssl by Covariance Matrix
             mdssl_z = torch.mean(dssl_z, 0)
@@ -382,37 +373,36 @@ class Trainer_mHSHA:
             disentangle_i_ssl_loss = nn.MSELoss()(C_i_ssl, target_cr_i_ssl)
             total_i_ssl_disentangle_loss += disentangle_i_ssl_loss.item()
 
-            # Distangle s and ssl by Covariance Matrix
-            C_s_ssl = ds_z_n[:, :, None] * dssl_z_n[:, None, :]
+            # descriminator
+            di_predicted_domain = self.domain_discriminator(di_z)
+            predicted_domain_di_loss = self.criterion(di_predicted_domain, tr_domain_labels)
+            total_dc_loss += predicted_domain_di_loss.item()
 
-            target_cr_s_ssl = torch.zeros(C_s_ssl.shape[0], C_s_ssl.shape[1], C_s_ssl.shape[2]).to(self.device)
-            disentangle_s_ssl_loss = nn.MSELoss()(C_s_ssl, target_cr_s_ssl)
-            total_s_ssl_disentangle_loss += disentangle_s_ssl_loss.item()
-
-            
-
-            # specific loss
+            # specific
             ds_predicted_classes = self.zs_domain_classifier(ds_z)
             predicted_domain_ds_loss = self.criterion(ds_predicted_classes, tr_domain_labels)
             total_zsc_loss += predicted_domain_ds_loss.item()
 
+
+            # 
             predicted_classes = self.classifier(di_z, ds_z, dssl_z)
             #
             #
             #
-            classification_loss = self.criterion(predicted_classes, tr_labels )
+            classification_loss = self.criterion(predicted_classes, tr_labels)
             total_classification_loss += classification_loss.item()
 
-            total_loss = classification_loss + 1e7*domain_alignment_loss + self_supervision_loss + predicted_domain_ds_loss +\
-                 disentangle_i_s_loss + disentangle_i_ssl_loss + disentangle_s_ssl_loss
-
+            # total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + self_supervision_loss+\
+            #      disentangle_loss + disentangle_s_ssl_loss + disentangle_i_ssl_loss
+            total_loss = self_supervision_loss
 
             _, ds_predicted_classes = torch.max(ds_predicted_classes, 1)
             n_zs_domain_class_corrected += (ds_predicted_classes == tr_domain_labels).sum().item()
+            _, di_predicted_domain = torch.max(di_predicted_domain, 1)
+            n_domain_class_corrected += (di_predicted_domain == tr_domain_labels).sum().item()
             _, predicted_classes = torch.max(predicted_classes, 1)
             n_class_corrected += (predicted_classes == tr_labels).sum().item()
 
-            total_aligner_sample += len(domain_1_samples) +len(domain_2_samples)
             total_samples += len(tr_samples)
 
             self.optimizer.zero_grad()
@@ -457,7 +447,7 @@ class Trainer_mHSHA:
 
                 di_z, ds_z, dssl_z = self.zi_model(mte_samples), inner_zs_model(mte_samples), self.zssl_model(mte_samples)
                 predicted_classes = inner_classifier(di_z, ds_z, dssl_z)
-                loss_inner_j = self.criterion(predicted_classes, mte_labels )
+                loss_inner_j = self.criterion(predicted_classes, mte_labels)
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == mte_labels).sum().item()
 
@@ -476,28 +466,27 @@ class Trainer_mHSHA:
             self.meta_optimizer.step()
             print('iteration:',iteration)
             print('--------')
-
             print('Accuracy/train',100.0 * n_class_corrected / total_class_samples)
+
+            print('Accuracy/domainAT_train',100.0 * n_domain_class_corrected / total_samples)
             print('Accuracy/domainZS_train',100.0 * n_zs_domain_class_corrected / total_samples)
-
             print('Loss/train',total_classification_loss / total_class_samples)
-            print('Loss/domain aligment_train',total_domain_alignment_loss / total_aligner_sample)
-            print('Loss/ssl',total_self_supervision_loss / total_samples)
+            print('Loss/ssl',total_self_supervision_loss / total_class_samples)
+            print('Loss/domainAT_train',total_dc_loss / total_samples)
             print('Loss/domainZS_train',total_zsc_loss / total_samples)
-            print('Loss/i-s disentangle',total_i_s_disentangle_loss / total_samples)
-            print('Loss/i-ssl disentangle',total_i_ssl_disentangle_loss / total_samples)
-            print('Loss/s-ssl disentangle',total_s_ssl_disentangle_loss / total_samples)
-
+            print('Loss/disentangle i-s',total_disentangle_loss / total_samples)
+            print('Loss/disentangle i-ssl', total_i_ssl_disentangle_loss/ total_samples)
+            print('Loss/disentangle s-ssl', total_s_ssl_disentangle_loss/ total_samples)
 
 
             wandb.log({'Accuracy/train': 100.0 * n_class_corrected / total_class_samples}, step=iteration)
-            wandb.log({'Accuracy/domain specific':100.0 * n_zs_domain_class_corrected / total_samples}, step=iteration)
-
+            wandb.log({'Accuracy/domainAT_train':100.0 * n_domain_class_corrected / total_samples}, step=iteration)
+            wandb.log({'Accuracy/domainZS_train':100.0 * n_zs_domain_class_corrected / total_samples}, step=iteration)
             wandb.log({'Loss/train': total_classification_loss / total_class_samples}, step=iteration)
-            wandb.log({'Loss/domain alignment': total_domain_alignment_loss / total_aligner_sample}, step=iteration)
-            wandb.log({'Loss/ssl': total_self_supervision_loss / total_samples}, step=iteration)
-            wandb.log({'Loss/domain specific': total_zsc_loss / total_samples}, step=iteration)
-            wandb.log({'Loss/disentangle i-s': total_i_s_disentangle_loss / total_samples}, step=iteration)
+            wandb.log({'Loss/ssl': total_self_supervision_loss / total_class_samples}, step=iteration)
+            wandb.log({'Loss/domainAT_train': total_dc_loss / total_samples}, step=iteration)
+            wandb.log({'Loss/domainZS_train': total_zsc_loss / total_samples}, step=iteration)
+            wandb.log({'Loss/disentangle i-s': total_disentangle_loss / total_samples}, step=iteration)
             wandb.log({'Loss/disentangle i-ssl': total_i_ssl_disentangle_loss / total_samples}, step=iteration)
             wandb.log({'Loss/disentangle s-ssl': total_s_ssl_disentangle_loss / total_samples}, step=iteration)
 
@@ -505,19 +494,16 @@ class Trainer_mHSHA:
                 self.evaluate(iteration)
 
             n_class_corrected = 0
+            n_domain_class_corrected = 0
             n_zs_domain_class_corrected = 0
-            total_domain_alignment_loss = 0
             total_self_supervision_loss = 0
+            total_dc_loss = 0
             total_classification_loss = 0
             total_zsc_loss = 0
-
+            total_disentangle_loss = 0
             total_i_ssl_disentangle_loss = 0
-            total_i_s_disentangle_loss = 0
-            total_s_ssl_disentangle_loss = 0
-            
+            total_s_ssl_disentangle_loss = 0 
             total_samples = 0
-            total_aligner_sample = 0
-            total_aligner_sample = 0
             total_meta_samples = 0
 
     def evaluate(self, n_iter):
@@ -526,13 +512,11 @@ class Trainer_mHSHA:
         self.zssl_model.eval()
         self.classifier.eval()
         self.zs_domain_classifier.eval()
-        self.domain_aligner.eval()
+        self.domain_discriminator.eval()
 
         n_class_corrected = 0
         total_classification_loss = 0
-
         with torch.no_grad():
-            ######### attention : changed the val_loader to test_loader
             for iteration, (samples, labels, domain_labels) in enumerate(self.test_loader):
                 samples, labels = samples.to(self.device), labels.to(self.device)
                 di_z, ds_z, dssl_z = self.zi_model(samples), self.zs_model(samples), self.zssl_model(samples)
@@ -545,16 +529,17 @@ class Trainer_mHSHA:
         val_acc = n_class_corrected / len(self.test_loader.dataset)
         val_loss = total_classification_loss / len(self.test_loader.dataset)
         print('iteration:', n_iter)
-        print('Accuracy/test', val_acc)
-        print('Loss/test', val_loss)
-        wandb.log({'Accuracy/test': val_acc}, step=n_iter)
-        wandb.log({'Loss/test': val_loss}, step=n_iter)
+        print('Accuracy/val', 100.0 * n_class_corrected / len(self.test_loader.dataset))
+        print('Loss/val', total_classification_loss / len(self.test_loader.dataset))
+        wandb.log({'Accuracy/test': 100.0 * n_class_corrected / len(self.test_loader.dataset)}, step=n_iter)
+        wandb.log({'Loss/test': total_classification_loss / len(self.test_loader.dataset)}, step=n_iter)
+
         self.zi_model.train()
         self.zs_model.train()
         self.zssl_model.train()
         self.classifier.train()
         self.zs_domain_classifier.train()
-        self.domain_aligner.train()
+        self.domain_discriminator.train()
 
         if self.args.val_size != 0:
             if self.val_acc_max < val_acc:
@@ -566,7 +551,7 @@ class Trainer_mHSHA:
                         "zssl_model_state_dict": self.zssl_model.state_dict(),
                         "classifier_state_dict": self.classifier.state_dict(),
                         "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
-                        "domain_aligner_state_dict": self.domain_aligner.state_dict(),
+                        "domain_discriminator_state_dict": self.domain_discriminator.state_dict(),
                     },
                     self.checkpoint_name + ".pt",
                 )
@@ -578,15 +563,13 @@ class Trainer_mHSHA:
         self.zssl_model.load_state_dict(checkpoint["zssl_model_state_dict"])
         self.classifier.load_state_dict(checkpoint["classifier_state_dict"])
         self.zs_domain_classifier.load_state_dict(checkpoint["zs_domain_classifier_state_dict"])
-        self.domain_aligner.load_state_dict(checkpoint["domain_aligner_state_dict"])
-
+        self.domain_discriminator.load_state_dict(checkpoint["domain_discriminator_state_dict"])
         self.zi_model.eval()
         self.zs_model.eval()
         self.zssl_model.eval()
-
         self.classifier.eval()
         self.zs_domain_classifier.eval()
-        self.domain_aligner.eval()
+        self.domain_discriminator.eval()
 
         n_class_corrected = 0
         with torch.no_grad():
@@ -598,7 +581,7 @@ class Trainer_mHSHA:
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
         test_acc = 100.0 * n_class_corrected / len(self.test_loader.dataset)
-        test_loss = 100.0 * n_class_corrected / len(self.test_loader.dataset)
+        test_loss = 100.0 * n_class_corrected / len(self.test_loader.dataset)        
         print('Accuracy/test',test_acc)
         wandb.log({'Loss/test': test_loss})
 

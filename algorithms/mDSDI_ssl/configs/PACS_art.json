@@ -1,0 +1,20 @@
+{
+    "exp_name": "PACS_art",
+    "algorithm": "mDSDI",
+    "model": "resnet50",
+    "feature_dim": 2048,
+    "dataset": "PACS",
+    "seed_value": 1,
+    "val_size": 0.2,
+    "src_data_path": "/isilon/datasets/PACS/kfold/",
+    "src_train_meta_filenames":["/isilon/datasets/PACS/filepaths/photo/train.txt",
+        "/isilon/datasets/PACS/filepaths/cartoon/train.txt",
+        "/isilon/datasets/PACS/filepaths/sketch/train.txt"],
+    "target_test_meta_filenames": ["/isilon/datasets/PACS/filepaths/art_painting/train.txt"],
+    "n_classes": 7,
+    "n_domain_classes": 3,
+    "iterations": 5000,
+    "learning_rate": 0.00005,
+    "batch_size": 16,
+    "step_eval": 300
+}
