@@ -1,4 +1,4 @@
-# Exploiting Domain-Specific Features to Enhance Domain Generalization
+# Exploiting All Levels of Abstration of Features for Improving the Generalization to Unseen Hospitals
 
 ## Table of Content
 
