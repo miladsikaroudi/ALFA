@@ -1,8 +1,8 @@
 {
     "exp_name": "RCC_igc_erm",
     "algorithm": "ERM",
-    "model": "resnet50",
-    "feature_dim": 2048,
+    "model": "resnet18",
+    "feature_dim": 512,
     "dataset": "RCC",
     "seed_value": 1,
     "val_size": 0.2,
@@ -13,8 +13,8 @@
     "target_test_meta_filenames": ["/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/International Genomics Consortium_test.txt"],
     "n_classes": 3,
     "n_domain_classes": 3,
-    "iterations": 5000,
+    "iterations": 3000,
     "learning_rate": 0.00005,
-    "batch_size": 16,
+    "batch_size": 32,
     "step_eval": 300
 }

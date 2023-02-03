@@ -198,7 +198,6 @@ class Trainer_mDSDI_ssl:
         meta_optimizer_params = list(self.zs_model.parameters()) + list(self.classifier.parameters())
         self.meta_optimizer = torch.optim.Adam(meta_optimizer_params, lr=self.args.learning_rate)
         self.criterion_triplet = TripletMarginLoss(margin=10.0)
-        # self.criterion_triplet = TripletMarginLossCollapsePrevention(margin=10.0)
         
         self.criterion = nn.CrossEntropyLoss()
         self.reconstruction_criterion = nn.MSELoss()
@@ -392,9 +391,9 @@ class Trainer_mDSDI_ssl:
             classification_loss = self.criterion(predicted_classes, tr_labels)
             total_classification_loss += classification_loss.item()
 
-            # total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + self_supervision_loss+\
-            #      disentangle_loss + disentangle_s_ssl_loss + disentangle_i_ssl_loss
-            total_loss = self_supervision_loss
+            total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + self_supervision_loss+\
+                 disentangle_loss + disentangle_s_ssl_loss + disentangle_i_ssl_loss
+            # total_loss = self_supervision_loss
 
             _, ds_predicted_classes = torch.max(ds_predicted_classes, 1)
             n_zs_domain_class_corrected += (ds_predicted_classes == tr_domain_labels).sum().item()
