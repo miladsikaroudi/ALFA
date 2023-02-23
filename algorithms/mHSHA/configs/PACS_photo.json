@@ -6,15 +6,15 @@
     "dataset": "PACS",
     "seed_value": 1,
     "val_size": 0.2,
-    "src_data_path": "data/PACS/Raw images/",
-    "src_train_meta_filenames":["data/PACS/Train val splits/art_painting.txt",
-        "data/PACS/Train val splits/cartoon.txt",
-        "data/PACS/Train val splits/sketch.txt"],
-    "target_test_meta_filenames": ["data/PACS/Train val splits/photo.txt"],
+    "src_data_path": "/isilon/datasets/PACS/kfold/",
+    "src_train_meta_filenames":["/isilon/datasets/PACS/filepaths/cartoon/test.txt",
+        "/isilon/datasets/PACS/filepaths/sketch/test.txt",
+        "/isilon/datasets/PACS/filepaths/art_painting/test.txt"],
+    "target_test_meta_filenames": ["/isilon/datasets/PACS/filepaths/photo/test.txt"],
     "n_classes": 7,
     "n_domain_classes": 3,
-    "iterations": 3000,
+    "iterations": 5000,
     "learning_rate": 0.00005,
     "batch_size": 32,
-    "step_eval": 300
+    "step_eval": 30
 }

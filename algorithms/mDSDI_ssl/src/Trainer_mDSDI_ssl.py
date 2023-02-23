@@ -197,7 +197,7 @@ class Trainer_mDSDI_ssl:
 
         meta_optimizer_params = list(self.zs_model.parameters()) + list(self.classifier.parameters())
         self.meta_optimizer = torch.optim.Adam(meta_optimizer_params, lr=self.args.learning_rate)
-        self.criterion_triplet = TripletMarginLoss(margin=10.0)
+        self.criterion_triplet = TripletMarginLoss(margin=0.5)
         
         self.criterion = nn.CrossEntropyLoss()
         self.reconstruction_criterion = nn.MSELoss()
@@ -391,7 +391,7 @@ class Trainer_mDSDI_ssl:
             classification_loss = self.criterion(predicted_classes, tr_labels)
             total_classification_loss += classification_loss.item()
 
-            total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + self_supervision_loss+\
+            total_loss = classification_loss + predicted_domain_di_loss + predicted_domain_ds_loss + 0.005*self_supervision_loss+\
                  disentangle_loss + disentangle_s_ssl_loss + disentangle_i_ssl_loss
             # total_loss = self_supervision_loss
 
@@ -580,8 +580,7 @@ class Trainer_mDSDI_ssl:
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
         test_acc = 100.0 * n_class_corrected / len(self.test_loader.dataset)
-        test_loss = 100.0 * n_class_corrected / len(self.test_loader.dataset)        
         print('Accuracy/test',test_acc)
-        wandb.log({'Loss/test': test_loss})
+        wandb.log({'Accuracy/test': test_acc})
 
 

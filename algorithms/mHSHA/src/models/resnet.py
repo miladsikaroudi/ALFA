@@ -16,10 +16,10 @@ class Identity(nn.Module):
 class ResNet(torch.nn.Module):
     """ResNet with the softmax chopped off and the batchnorm frozen"""
 
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super(ResNet, self).__init__()
-        self.network = torchvision.models.resnet50(pretrained=True)
-        self.n_outputs = 2048
+        self.network = torchvision.models.resnet18(pretrained)
+        self.n_outputs = 512
 
         # self.network = remove_batch_norm_from_resnet(self.network)
 

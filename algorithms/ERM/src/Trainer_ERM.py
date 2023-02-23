@@ -28,6 +28,7 @@ def set_tr_val_samples_labels(meta_filenames, val_size):
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
         data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
+        # data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s")
         data_frame = data_frame.sample(frac=1).reset_index(drop=True)
 
         split_idx = int(len(data_frame) * (1 - val_size))
@@ -45,6 +46,7 @@ def set_test_samples_labels(meta_filenames):
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
         data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
+        # data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s")
         sample_paths.extend(data_frame["filename"])
         class_labels.extend(data_frame["class_label"])
 
@@ -138,7 +140,7 @@ class Trainer_ERM:
             for d_idx in range(len(self.train_iter_loaders)):
                 train_loader = self.train_iter_loaders[d_idx]
                 for idx in range(len(train_loader)):
-                    samples, labels, domain_labels = train_loader.next()
+                    samples, labels, domain_labels = next(train_loader)
                     samples = samples.to(self.device)
                     labels = labels.to(self.device)
                     domain_labels = domain_labels.to(self.device)
@@ -189,7 +191,7 @@ class Trainer_ERM:
                     self.train_iter_loaders[idx] = iter(self.train_loaders[idx])
                 train_loader = self.train_iter_loaders[idx]
 
-                itr_samples, itr_labels, itr_domain_labels = train_loader.next()
+                itr_samples, itr_labels, itr_domain_labels = next(train_loader)
                 samples.append(itr_samples)
                 labels.append(itr_labels)
 
@@ -216,7 +218,7 @@ class Trainer_ERM:
             wandb.log({'Accuracy/train': 100.0 * n_class_corrected / total_samples}, step=iteration)
             wandb.log({'Loss/train': total_classification_loss / total_samples}, step=iteration)
             
-            if iteration % self.args.step_eval == 0 and iteration != 0:
+            if iteration % self.args.step_eval == 0:
                 self.evaluate(iteration)
 
             n_class_corrected = 0
@@ -240,12 +242,12 @@ class Trainer_ERM:
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
         
-        val_acc = n_class_corrected / len(self.test_loader.dataset)
+        val_acc = 100 * n_class_corrected / len(self.test_loader.dataset)
         val_loss = total_classification_loss / len(self.test_loader.dataset)
 
         print('iteration:',iteration)
         print('--------')
-        print('Accuracy/test',val_acc,n_iter)
+        print('Accuracy/test',val_acc, n_iter)
         print('Loss/test',val_loss, n_iter)
         
         wandb.log({'Accuracy/test': val_acc}, step=n_iter)
@@ -289,5 +291,5 @@ class Trainer_ERM:
                 _, predicted_classes = torch.max(predicted_classes, 1)
                 n_class_corrected += (predicted_classes == labels).sum().item()
                 
-        print('Test set accuracy', 100.0 * n_class_corrected / len(self.test_loader.dataset))
-        wandb.log({'Test set accuracy': 100.0 * n_class_corrected / len(self.test_loader.dataset)})
+        print('Accuracy/test', 100.0 * n_class_corrected / len(self.test_loader.dataset))
+        wandb.log({'Accuracy/test': 100.0 * n_class_corrected / len(self.test_loader.dataset)})

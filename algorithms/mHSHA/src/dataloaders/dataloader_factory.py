@@ -2,9 +2,11 @@ from algorithms.mHSHA.src.dataloaders.MNIST_Dataloader import MNIST_Test_Dataloa
 from algorithms.mHSHA.src.dataloaders.Standard_Dataloader import StandardDataloader, StandardValDataloader
 
 
+
 train_dataloaders_map = {
     "PACS": StandardDataloader,
     "RCC": StandardDataloader,
+    "synthetic": StandardDataloader,
     "DomainNet": StandardDataloader,
     "MNIST": MNISTDataloader,
     "OfficeHome": StandardDataloader,
@@ -14,6 +16,7 @@ train_dataloaders_map = {
 test_dataloaders_map = {
     "PACS": StandardValDataloader,
     "RCC": StandardValDataloader,
+    "synthetic": StandardValDataloader,
     "DomainNet": StandardValDataloader,
     "MNIST": MNIST_Test_Dataloader,
     "OfficeHome": StandardValDataloader,

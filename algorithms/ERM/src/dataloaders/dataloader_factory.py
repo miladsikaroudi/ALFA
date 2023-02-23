@@ -5,6 +5,7 @@ from algorithms.ERM.src.dataloaders.Standard_Dataloader import StandardDataloade
 train_dataloaders_map = {
     "PACS": StandardDataloader,
     "RCC": StandardDataloader,
+    "synthetic": StandardDataloader,
     "DomainNet": StandardDataloader,
     "MNIST": MNISTDataloader,
     "OfficeHome": StandardDataloader,
@@ -14,6 +15,7 @@ train_dataloaders_map = {
 test_dataloaders_map = {
     "PACS": StandardValDataloader,
     "RCC": StandardValDataloader,
+    "synthetic": StandardValDataloader,
     "DomainNet": StandardValDataloader,
     "MNIST": MNIST_Test_Dataloader,
     "OfficeHome": StandardValDataloader,

@@ -2,7 +2,7 @@ from algorithms.ERM.src.models.mnistnet import MNIST_CNN, Color_MNIST_CNN
 from algorithms.ERM.src.models.resnet import ResNet
 
 
-nets_map = {"mnistnet": MNIST_CNN, "cmnistnet": Color_MNIST_CNN, "resnet50": ResNet}
+nets_map = {"mnistnet": MNIST_CNN, "cmnistnet": Color_MNIST_CNN, "resnet50": ResNet, "resnet18": ResNet}
 
 
 def get_model(name):
