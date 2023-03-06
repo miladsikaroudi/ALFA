@@ -1,20 +1,22 @@
+import wandb
+
 import copy
 import os
 import pickle
-import shutil
 
 import numpy as np
 import pandas as pd
+
 import torch
 import torch.nn as nn
 from algorithms.mDSDI.src.dataloaders import dataloader_factory
 from algorithms.mDSDI.src.models import model_factory
 from torch.utils.data import DataLoader
-import wandb
-from utils.utils import UMAPPlot
 
 import torchmetrics
 from torchmetrics.classification import MulticlassRecall
+
+from utils.utils import UMAPPlot
 
 class GradReverse(torch.autograd.Function):
     @staticmethod
@@ -88,13 +90,10 @@ def set_tr_val_samples_labels(meta_filenames, val_size):
 
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
-
         data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
-        # data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s")
-        
         data_frame = data_frame.sample(frac=1).reset_index(drop=True)
-
         split_idx = int(len(data_frame) * (1 - val_size))
+
         sample_tr_paths.append(data_frame["filename"][:split_idx])
         class_tr_labels.append(data_frame["class_label"][:split_idx])
 
@@ -109,7 +108,7 @@ def set_test_samples_labels(meta_filenames):
     for idx_domain, meta_filename in enumerate(meta_filenames):
         column_names = ["filename", "class_label"]
         data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\+\s+")
-        # data_frame = pd.read_csv(meta_filename, header=None, names=column_names, sep="\s")
+
         sample_paths.extend(data_frame["filename"])
         class_labels.extend(data_frame["class_label"])
 
@@ -202,6 +201,11 @@ class Trainer_mDSDI:
         self.reconstruction_criterion = nn.MSELoss()
         self.val_loss_min = np.Inf
         self.val_acc_max = 0
+
+        self.auroc = torchmetrics.AUROC(task="multiclass", num_classes=self.args.n_classes).to(self.device)
+        self.f1_score = torchmetrics.F1Score(task="multiclass", num_classes=self.args.n_classes).to(self.device)
+        self.recall = MulticlassRecall(num_classes=self.args.n_classes).to(self.device)
+
         self.plotter = UMAPPlot(sample_size = 2000)
 
     def save_plot(self):
@@ -229,7 +233,7 @@ class Trainer_mDSDI:
             for d_idx in range(len(self.train_iter_loaders)):
                 train_loader = self.train_iter_loaders[d_idx]
                 for idx in range(len(train_loader)):
-                    samples, labels, domain_labels = next(train_loader)
+                    samples, labels, domain_labels, sample_paths = next(train_loader)
                     samples = samples.to(self.device)
                     labels = labels.to(self.device)
                     domain_labels = domain_labels.to(self.device)
@@ -519,8 +523,8 @@ class Trainer_mDSDI:
         self.domain_discriminator.train()
 
         if self.args.val_size != 0:
-            if self.val_acc_max < val_acc:
-                self.val_acc_max = val_acc
+            if self.val_loss_min > val_loss:
+                self.val_loss_min = val_loss
                 torch.save(
                     {
                         "zi_model_state_dict": self.zi_model.state_dict(),
@@ -531,6 +535,19 @@ class Trainer_mDSDI:
                     },
                     self.checkpoint_name + ".pt",
                 )
+        else: 
+            if self.val_acc_max < val_acc:
+                self.val_acc_max = val_acc
+                torch.save(
+                        {
+                            "zi_model_state_dict": self.zi_model.state_dict(),
+                            "zs_model_state_dict": self.zs_model.state_dict(),
+                            "classifier_state_dict": self.classifier.state_dict(),
+                            "zs_domain_classifier_state_dict": self.zs_domain_classifier.state_dict(),
+                            "domain_discriminator_state_dict": self.domain_discriminator.state_dict(),
+                        },
+                        self.checkpoint_name + ".pt",
+                    )
 
     def test(self):
         checkpoint = torch.load(self.checkpoint_name + ".pt")
@@ -556,8 +573,12 @@ class Trainer_mDSDI:
         avg_recall = 0
 
         with torch.no_grad():
-            for iteration, (samples, labels, _) in enumerate(self.test_loader):
+            for iteration, (samples, labels, _, sample_paths) in enumerate(self.test_loader):
                 samples, labels = samples.to(self.device), labels.to(self.device)
+                if self.args.dataset == 'RCC':
+                    slide_names = ['.'.join(sample_path.split('/')[-1].split('_')[-1].split('.')[0:-1]) \
+                        for sample_path in sample_paths]
+                    slide_names_all.extend(slide_names)
                 di_z, ds_z = self.zi_model(samples), self.zs_model(samples)
                 prediction_classes = self.classifier(di_z, ds_z)
                 di_z_all = np.vstack((di_z_all, di_z.detach().cpu().numpy()))

@@ -32,11 +32,13 @@ algorithms_map = {"ERM": Trainer_ERM, "mDSDI": Trainer_mDSDI, "mHSHA": Trainer_m
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--config", default='./algorithms/mDSDI/configs/synthetic_theta5_100.json', help="Path to configuration file")
+    parser.add_argument("--config", default='./algorithms/mDSDI/configs/PACS_art.json', help="Path to configuration file")
     parser.add_argument("--exp_idx", default='1',  help="Index of experiment")
     parser.add_argument("--gpu_idx", default='1', help="Index of GPU")
     bash_args = parser.parse_args()
+    print(bash_args)
     with open(bash_args.config, "r") as inp:
+        
         args = argparse.Namespace(**json.load(inp))
     
 

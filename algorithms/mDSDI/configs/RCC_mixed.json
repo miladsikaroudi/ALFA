@@ -1,6 +1,6 @@
 {
-    "exp_name": "RCC_nci",
-    "algorithm": "mHSHA",
+    "exp_name": "RCC_mix",
+    "algorithm": "mDSDI",
     "model": "resnet18",
     "feature_dim": 512,
     "dataset": "RCC",
@@ -8,13 +8,13 @@
     "val_size": 0.2,
     "src_data_path": "/isilon/datasets/DG_TCGA_patches/ready_to_run/",
     "src_train_meta_filenames":["/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/International Genomics Consortium_validation.txt",
-    "/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/MSKCC_validation.txt",
-    "/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/Harvard and MD Anderson_validation.txt"],
-    "target_test_meta_filenames": ["/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/NCI Urologic Oncology Branch_validation.txt"],
+        "/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/MSKCC_validation.txt",
+        "/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/NCI Urologic Oncology Branch_validation.txt"],
+    "target_test_meta_filenames": ["/isilon/datasets/DG_TCGA_patches/ready_to_run/splits/Harvard and MD Anderson_validation.txt"],
     "n_classes": 3,
     "n_domain_classes": 3,
     "iterations": 3000,
     "learning_rate": 0.00005,
     "batch_size": 32,
-    "step_eval": 30
+    "step_eval": 300
 }

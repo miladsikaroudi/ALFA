@@ -2,25 +2,29 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from pytorch_metric_learning import miners, losses
+from .augmentation_utils import *
 
 from sklearn.decomposition import PCA
 import umap
 
 from . import common_functions as c_f
 from . import losses_and_miners_utils as lmu
-import numpy as np
-from operator import itemgetter 
-
-import matplotlib.pyplot as plt
-from .augmentation_utils import *
 
 from collections import defaultdict, OrderedDict
+import numpy as np
 from numpy import mean
+from operator import itemgetter 
+
 import pandas as pd
+
+import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
+from matplotlib import rcParams
+rcParams['font.family'] = 'Liberation Serif'
+rcParams['font.size'] = 24
 
-
+############################### defined loss utils ##############################
 class TripletMarginLoss(nn.Module):
 
     """ Sampling Matters in Deep Embedding Learning: https://arxiv.org/pdf/1706.07567.pdf
@@ -128,6 +132,9 @@ class KLDiv(object):
 
         return kd_loss, prob1s, prob2s
 
+
+
+############################### list utils ##############################
 class to_uint8_tensor(object):
     def __call__(self, sample):
         normalized_tensor = (sample-sample.min())/(sample.max()-sample.min())
@@ -157,6 +164,7 @@ def list_to_dict_average(init_list):
         dictionary[k].append(v)
     return {key: tuple(map(mean, zip(*value))) for key, value in dictionary.items()}
 
+############################### visualizarion utils ##############################
 class UMAPPlot(object):
     def __init__(self, sample_size:int) -> None:
         np.random.seed(0)
@@ -167,7 +175,6 @@ class UMAPPlot(object):
     def plot(self, embeddings, labels, WSI_names, dataset:str, domain: bool, name:str):
 
             n_classes = len(pylist_unique(labels))
-            
             idx = np.random.choice(embeddings.shape[0], min(embeddings.shape[0],self.sample_size), replace=False)
 
             sampled_embedding = embeddings[ idx,:]
@@ -183,20 +190,18 @@ class UMAPPlot(object):
                 class_names = [class_list_visualization[str(i)] for i in range(len(class_list_visualization))]
                 newcmp = shrink_cmap(cmap_official = 'RdPu')
                 WSI_embeddings, WSI_labels = WSI_embedding_aggregator(sampled_WSIs, embedding_embedded)
-                plt.scatter(embedding_embedded[:, 0], embedding_embedded[:, 1], s=70, c=sampled_labels, cmap=newcmp, alpha=0.2, linewidths=0.01, edgecolors='b')
-                plt.scatter(WSI_embeddings[:, 0], WSI_embeddings[:, 1], s=60, c=WSI_labels, cmap=newcmp, alpha=1.0, edgecolors='black')
+                plt.scatter(embedding_embedded[:, 0], embedding_embedded[:, 1], s=450, c=sampled_labels, cmap=newcmp, alpha=0.15, linewidths=0.01, edgecolors='b')
+                plt.scatter(WSI_embeddings[:, 0], WSI_embeddings[:, 1], s=650, c=WSI_labels, cmap=newcmp, alpha=1.0, edgecolors='black')
             elif dataset == 'PACS' or dataset =='synthetic':
                 class_list_visualization = classnames_factory(dataset=dataset)
                 class_names = [class_list_visualization[str(i)] for i in range(len(class_list_visualization))]
-                plt.scatter(embedding_embedded[:, 0], embedding_embedded[:, 1], s=30, c=sampled_labels, cmap='jet', alpha=1.0, linewidths=0.1, edgecolors='b')
-            
+                plt.scatter(embedding_embedded[:, 0], embedding_embedded[:, 1], s=80, c=sampled_labels, cmap='jet', alpha=1.0, linewidths=0.1, edgecolors='b')
             cbar = plt.colorbar(boundaries=np.arange(n_classes+1)-0.5)
             cbar.set_ticks(np.arange(n_classes))
             if not domain:
                 cbar.set_ticklabels(class_names)
             plt.axis('off')
             plt.title(name)
-
             return fig
 
 def WSI_embedding_aggregator(WSI_name_list, embedding_list):
@@ -221,8 +226,6 @@ def shrink_cmap(cmap_official='RdPu'):
     return newcmp
 
 def classnames_factory(dataset):
-
-
     if dataset == 'RCC':
         class_list_visualization = {'0': 'ccRCC',
                                     '1': 'pRCC',
@@ -239,36 +242,3 @@ def classnames_factory(dataset):
         class_list_visualization = {'0': 'HP',
                                     '1': 'SSA'}               
     return class_list_visualization
-
-# class SSLBatchDataloader(Dataset):
-#     def __init__(self, batch_data):
-#         self.self_supervision_transform = T.Compose([
-#                     # RandomElastic(alpha=0.2, sigma=0.05),
-#                     HEDJitter(theta=0.04),
-#                     T.RandomGrayscale(p=0.5),
-#                     RandomAffine(degrees=[-10,10], translate=[0, 0.1], scale=[0.8, 1.2],
-#                                            shear=[-1, 1, -1, 1], fillcolor=(0, 0, 0)),
-#                     # RandomGaussBlur(radius=[1, 1.5]),
-#                     T.ToTensor(),
-#                     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-#                     ]) 
-#         self.batch_data = batch_data
-
-#     def get_image(self, idx):
-#         sample = self.batch_data[idx,:,:,:]
-#         normalize_image = self.normalize_0_255(sample)
-#         return self.self_supervision_transform(normalize_image)
-
-#     def normalize_0_255(self, sample):
-#         normalized_tensor = (sample-sample.min())/(sample.max()-sample.min())
-#         normalized_tensor = normalized_tensor * 255.0  # case [0, 1]
-#         normalized_tensor = torch.clip(normalized_tensor, 0.0, 255.0).type(torch.uint8)
-#         normalize_image = FV.to_pil_image(normalized_tensor)
-#         return normalize_image
-
-#     def __len__(self):
-#         return self.batch_data.shape[0]
-
-#     def __getitem__(self, index):
-#         sample = self.get_image(index)
-#         return sample

@@ -33,9 +33,10 @@ class StandardDataloader(Dataset):
 
     def __getitem__(self, index):
         sample = self.get_image(self.src_path + self.sample_paths[index])
+        sample_path = self.sample_paths[index]
         class_label = self.class_labels[index]
 
-        return sample, class_label, self.domain_label
+        return sample, class_label, self.domain_label, sample_path
 
 
 class StandardValDataloader(StandardDataloader):

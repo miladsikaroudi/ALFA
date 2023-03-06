@@ -9,4 +9,9 @@
 # rm -r algorithms/mDSDI/results/logs/*
 # rm -r algorithms/mDSDI/results/plots/*
 # rm -r algorithms/mDSDI/results/tensorboards/*
-taskset -c "51" python main.py --config "algorithms/mDSDI/configs/PACS_photo.json" --exp_idx "0" --gpu_idx "0"
+#!/bin/bash
+
+for arg in './algorithms/ERM/configs/RCC_igc.json' './algorithms/ERM/configs/RCC_nci.json' './algorithms/ERM/configs/RCC_mskcc.json' './algorithms/ERM/configs/RCC_mixed.json'
+do
+    python main.py --config $arg
+done
