@@ -1,4 +1,4 @@
-# Exploiting All Levels of Abstration of Features for Improving the Generalization to Unseen Hospitals
+# Exploiting All Levels of Features Abstraction for Improving the Generalization to Unseen Hospitals
 
 ## Table of Content
 
@@ -8,30 +8,18 @@
     - [To run experiments](#experiments)
     - [To visualize objective functions](#visualize)
     - [To plot feature representations](#plot)
-    - [To run on `DomainBed, Ishaan and David, 2021` library](#DomainBed)
-
+    
 ## <a name="intro"></a> Introduction
 
-This repository contains the implementation of meta-Domain Specific-Domain Invariant (mDSDI), a theoretical sound framework based on the Information-Bottleneck principle to investigate foundational questions in Domain Generalization (DG). 
-Following the theoretical analysis of the limitation when only learning domain-invariant and the essential of domain-specific representation,
-mDSDI extends beyond the invariance view by adversarial training to further capture the usefulness of domain-specific information by meta-training. 
-Its results show competitive performance with state-of-the-art techniques in DG and confirm the hypothesis that domain-specific is essential in ablation studies.
 
-![framework](gallery/theoretical_insights.png)
+This repository contains the implementation of our "exploting the All Level of Features Abstraction" (ALFA) method for MICCAI 2023. Our approach goes beyond traditional methods by leveraging not only domain-specific features but also incorporating SSL features with the goal of improving DG. Through the integration of SSL, our ALFA method can effectively learn and utilize additional features that are relevant, resulting in improved performance and accuracy. We are excited to present our findings at MICCAI 2023 and share how the ALFA method can advance the field of medical image analysis.
 
-Details of the model and experimental results can be found in our following NeurIPS 2021 [paper](https://arxiv.org/abs/2110.09410):
+
+![framework](gallery/insight.png)
+
+Details of the model and experimental results can be found in the submission:
 ```bibtex
-@inproceedings{NEURIPS2021_b0f2ad44,
- author = {Bui, Manh-Ha and Tran, Toan and Tran, Anh and Phung, Dinh},
- booktitle = {Advances in Neural Information Processing Systems},
- editor = {M. Ranzato and A. Beygelzimer and Y. Dauphin and P.S. Liang and J. Wortman Vaughan},
- pages = {21189--21201},
- publisher = {Curran Associates, Inc.},
- title = {Exploiting Domain-Specific Features to Enhance Domain Generalization},
- url = {https://proceedings.neurips.cc/paper/2021/file/b0f2ad44d26e1a6f244201fe0fd864d1-Paper.pdf},
- volume = {34},
- year = {2021}
-}
+in progress
 ```
 **Please CITE** our paper if you find it useful in your research.
 
@@ -43,11 +31,11 @@ python -m pip install -r requirements.txt
 ```
 
 Download and unzip the datasets:
-```sh
-bash setup.sh
 ```
 
-<img src="gallery/dataset.png" width="50%" height="50%">
+```
+
+<img src="gallery/domains.png" width="50%" height="50%">
 
 ### <a name="experiments"></a> To run experiments:
 Run with five different seeds:
@@ -65,14 +53,23 @@ where the parameters are the following:
 
 <img src="gallery/framework.png" width="50%" height="50%">
 
-### <a name="visualize"></a> To visualize objective functions:
+### <a name="visualize"></a> To visualize objective functions we have used wandb:
 
 ```sh
-tensorboard --logdir <logdir>
+wandb.log({name_for_the_entity:entity}) 
 ```
-where `<logdir>`: absolute path stored TensorBoard results. E.g., `<logdir> = "/home/ubuntu/mDSDI/algorithms/mDSDI/results/tensorboards/PACS_photo_1"`
 
-<img src="gallery/Loss.png" width="50%" height="50%">
+### <a name="Losses plots"></a> Here is the losses plot for the ALFA:
+
+<img src="gallery/L_ssl_new.png" width="50%" height="50%">
+<img src="gallery/L_i_new.png" width="50%" height="50%">
+<img src="gallery/Ls_new.png" width="50%" height="50%">
+<img src="gallery/L_disentangle i-ssl_new.png" width="50%" height="50%">
+<img src="gallery/L_disentangle i-s_new.png" width="50%" height="50%">
+<img src="gallery/L_disentangle s-ssl_new.png" width="50%" height="50%">
+<img src="gallery/L_c_new.png" width="50%" height="50%">
+
+
 
 ### <a name="plot"></a> To plot feature representations:
 

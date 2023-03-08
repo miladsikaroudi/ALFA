@@ -398,7 +398,7 @@ class Trainer_mHSHA:
             classification_loss = self.criterion(predicted_classes, tr_labels )
             total_classification_loss += classification_loss.item()
 
-            total_loss = classification_loss + 10.0*domain_alignment_loss + self_supervision_loss + predicted_domain_ds_loss +\
+            total_loss = classification_loss + domain_alignment_loss + self_supervision_loss + predicted_domain_ds_loss +\
                  disentangle_i_s_loss + disentangle_i_ssl_loss + disentangle_s_ssl_loss
 
 
