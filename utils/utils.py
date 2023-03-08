@@ -217,6 +217,7 @@ def WSI_embedding_aggregator(WSI_name_list, embedding_list):
     WSI_labels = np.asarray(list(classidx_embedding_dict.values()))
     return WSI_embeddings, WSI_labels
 
+
 def shrink_cmap(cmap_official='RdPu'):
     rdpu = cm.get_cmap(cmap_official, 256)
     newcolors = rdpu(np.linspace(0, 1, 256))

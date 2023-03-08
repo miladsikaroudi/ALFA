@@ -12,11 +12,12 @@ import torch.nn as nn
 from algorithms.mDSDI.src.dataloaders import dataloader_factory
 from algorithms.mDSDI.src.models import model_factory
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 import torchmetrics
 from torchmetrics.classification import MulticlassRecall
 
-from utils.utils import UMAPPlot
+from utils.utils import *
 
 class GradReverse(torch.autograd.Function):
     @staticmethod
@@ -566,6 +567,7 @@ class Trainer_mDSDI:
         n_class_corrected = 0
         di_z_all, ds_z_all = np.empty((0, self.args.feature_dim)), \
                                  np.empty((0, self.args.feature_dim)),
+        probs_all = np.empty((0, self.args.n_classes))
         labels_all = []
         slide_names_all = []
         avg_f1 = 0
@@ -581,6 +583,9 @@ class Trainer_mDSDI:
                     slide_names_all.extend(slide_names)
                 di_z, ds_z = self.zi_model(samples), self.zs_model(samples)
                 prediction_classes = self.classifier(di_z, ds_z)
+                probs = F.softmax(prediction_classes)
+                probs_all = np.vstack((probs_all, probs.detach().cpu().numpy()))
+                
                 di_z_all = np.vstack((di_z_all, di_z.detach().cpu().numpy()))
                 ds_z_all = np.vstack((ds_z_all, ds_z.detach().cpu().numpy()))
                 labels_all.extend(labels.detach().cpu().numpy())
@@ -612,5 +617,28 @@ class Trainer_mDSDI:
         wandb.log({'di_z_class_table_test_OOD': plot_di_z_class})
         wandb.log({'ds_z_class_table_test_OOD': plot_ds_z_class})
         wandb.log({'dall_z_class_table_test_OOD': plot_dall_z_class})
+
+        # for WSIs
+        if self.args.dataset == 'RCC':
+            WSI_probs, WSI_labels = WSI_embedding_aggregator(slide_names_all,\
+                                                            probs_all)
+            WSI_probs_tensor = torch.from_numpy(WSI_probs).cuda()
+            WSI_labels_tensor = torch.from_numpy(WSI_labels).cuda()
+
+            _, WSI_predicted_classes = torch.max(WSI_probs_tensor, 1)
+
+            WSI_accuracy = (WSI_predicted_classes == WSI_labels_tensor).sum()/WSI_labels_tensor.shape[0]
+            WSI_auroc = self.auroc(WSI_probs_tensor, WSI_labels_tensor)
+            WSI_f1 = self.f1_score(WSI_probs_tensor, WSI_labels_tensor)
+            WSI_recall = self.recall(WSI_probs_tensor, WSI_labels_tensor)
+
+            wandb.log({'WSI Accuracy/test OOD': WSI_accuracy})
+            wandb.log({'WSI AUROC/test OOD': WSI_auroc})
+            wandb.log({'WSI F1/test OOD': WSI_f1})
+            wandb.log({'WSI Recall/test OOD': WSI_recall})
+
+
+
+
 
 

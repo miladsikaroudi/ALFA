@@ -9,7 +9,6 @@ import torch
 from algorithms.ERM.src.Trainer_ERM import Trainer_ERM
 from algorithms.mDSDI.src.Trainer_mDSDI import Trainer_mDSDI
 from algorithms.mHSHA.src.Trainer_mHSHA import Trainer_mHSHA
-from algorithms.mDSDI_ssl.src.Trainer_mDSDI_ssl import Trainer_mDSDI_ssl
 
 
 
@@ -28,11 +27,11 @@ def fix_random_seed(seed_value):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-algorithms_map = {"ERM": Trainer_ERM, "mDSDI": Trainer_mDSDI, "mHSHA": Trainer_mHSHA, "mDSDI_ssl": Trainer_mDSDI_ssl}
+algorithms_map = {"ERM": Trainer_ERM, "mDSDI": Trainer_mDSDI, "mHSHA": Trainer_mHSHA}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--config", default='./algorithms/mDSDI/configs/PACS_art.json', help="Path to configuration file")
+    parser.add_argument("--config", default='./algorithms/mHSHA/configs/RCC_mixed.json', help="Path to configuration file")
     parser.add_argument("--exp_idx", default='1',  help="Index of experiment")
     parser.add_argument("--gpu_idx", default='1', help="Index of GPU")
     bash_args = parser.parse_args()
@@ -51,7 +50,7 @@ if __name__ == "__main__":
     fix_random_seed(args.seed_value)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainer = algorithms_map[args.algorithm](args, device, bash_args.exp_idx)
-    trainer.train()
+    # trainer.train()
     trainer.test()
-    trainer.save_plot()
+    # trainer.save_plot()
     print("Finished!")

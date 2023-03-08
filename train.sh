@@ -11,7 +11,12 @@
 # rm -r algorithms/mDSDI/results/tensorboards/*
 #!/bin/bash
 
-for arg in './algorithms/ERM/configs/RCC_igc.json' './algorithms/ERM/configs/RCC_nci.json' './algorithms/ERM/configs/RCC_mskcc.json' './algorithms/ERM/configs/RCC_mixed.json'
+'./algorithms/ERM/configs/RCC_igc.json' './algorithms/ERM/configs/RCC_nci.json' './algorithms/ERM/configs/RCC_mskcc.json' './algorithms/ERM/configs/RCC_mixed.json' './algorithms/mDSDI/configs/RCC_igc.json' './algorithms/mDSDI/configs/RCC_nci.json' './algorithms/mDSDI/configs/RCC_mskcc.json' './algorithms/mDSDI/configs/RCC_mixed.json' './algorithms/mHSHA/configs/RCC_igc.json' './algorithms/mHSHA/configs/RCC_nci.json' './algorithms/mHSHA/configs/RCC_mskcc.json' './algorithms/mHSHA/configs/RCC_mixed.json'
+
+
+
+for arg in './algorithms/ERM/configs/RCC_igc.json' './algorithms/ERM/configs/RCC_nci.json' './algorithms/ERM/configs/RCC_mskcc.json' './algorithms/ERM/configs/RCC_mixed.json' './algorithms/mDSDI/configs/RCC_igc.json' './algorithms/mDSDI/configs/RCC_nci.json' './algorithms/mDSDI/configs/RCC_mskcc.json' './algorithms/mDSDI/configs/RCC_mixed.json' './algorithms/mHSHA/configs/RCC_igc.json' './algorithms/mHSHA/configs/RCC_nci.json' './algorithms/mHSHA/configs/RCC_mskcc.json' './algorithms/mHSHA/configs/RCC_mixed.json'
+
 do
     python main.py --config $arg
 done
