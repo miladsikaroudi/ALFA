@@ -40,8 +40,6 @@ wandb.log({name_for_the_entity:entity})
 <img src="gallery/L_disentangle s-ssl_new.png" width="50%" height="50%">
 <img src="gallery/L_c_new.png" width="50%" height="50%">
 
-**Note:** Results are stored in `DomainBed/results/train_output/out.txt`
-
 ## License
 
-This source code is released under the Apache-2.0 license, included [here](LICENSE).
+This source code is released under the MIT license, included [here](LICENSE).
