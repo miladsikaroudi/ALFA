@@ -12,7 +12,8 @@
 ## <a name="intro"></a> Introduction
 
 
-This repository contains the implementation of our "exploting the All Level of Features Abstraction" (ALFA) method for MICCAI 2023. Our approach goes beyond traditional methods by leveraging not only domain-specific features but also incorporating SSL features with the goal of improving DG. Through the integration of SSL, our ALFA method can effectively learn and utilize additional features that are relevant, resulting in improved performance and accuracy. We are excited to present our findings at MICCAI 2023 and share how the ALFA method can advance the field of medical image analysis.
+This repository contains the implementation of our "Leveraging All Level of Features Abstraction" (ALFA) method for the ICCV workshop, CVAMD paper. Our approach goes beyond traditional methods by leveraging not only domain-specific features but also incorporating SSL features with the goal of improving DG. Through the integration of SSL, our ALFA method can effectively learn and utilize additional features that are relevant, resulting in improved performance and accuracy.
+
 
 
 ![framework](gallery/insight.png)
