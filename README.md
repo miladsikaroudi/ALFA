@@ -42,4 +42,4 @@ wandb.log({name_for_the_entity:entity})
 
 ## License
 
-This source code is released under the MIT license, included [here](LICENSE).
+This source code is released under the Creative Commons Attribution-NonCommercial (CC BY-NC) license, included [here](LICENSE).
