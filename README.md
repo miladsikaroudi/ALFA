@@ -1,4 +1,4 @@
-# Exploiting All Levels of Features Abstraction for Improving the Generalization to Unseen Hospitals
+# Leveraging All Levels of Features Abstraction for Improving the Generalization to Unseen Hospitals
 
 ## Table of Content
 
